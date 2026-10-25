@@ -331,39 +331,39 @@ class MainActivity : ComponentActivity() {
 }
 
 private val SatrLightColors = lightColorScheme(
-    primary = Color(0xFF116F68),
+    primary = Color(0xFF12372A),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFD0F0EB),
-    onPrimaryContainer = Color(0xFF062E2C),
-    secondary = Color(0xFF263F55),
+    primaryContainer = Color(0xFFD9ECE2),
+    onPrimaryContainer = Color(0xFF12372A),
+    secondary = Color(0xFF1F7A58),
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFDCE9F4),
-    onSecondaryContainer = Color(0xFF142B3D),
-    background = Color(0xFFF3F7F7),
-    onBackground = Color(0xFF14242E),
+    secondaryContainer = Color(0xFFE6EFE9),
+    onSecondaryContainer = Color(0xFF12372A),
+    background = Color(0xFFF4F7F3),
+    onBackground = Color(0xFF12372A),
     surface = Color(0xFFFFFFFF),
-    onSurface = Color(0xFF14242E),
-    surfaceVariant = Color(0xFFE7EFEF),
-    onSurfaceVariant = Color(0xFF52666B),
+    onSurface = Color(0xFF12372A),
+    surfaceVariant = Color(0xFFE6EFE9),
+    onSurfaceVariant = Color(0xFF4A6358),
     error = Color(0xFFB3261E),
     onError = Color.White,
 )
 
 private val SatrDarkColors = darkColorScheme(
-    primary = Color(0xFF83D8CB),
-    onPrimary = Color(0xFF003731),
-    primaryContainer = Color(0xFF07534D),
-    onPrimaryContainer = Color(0xFFB0F2E7),
-    secondary = Color(0xFFB8CFE1),
-    onSecondary = Color(0xFF223747),
-    secondaryContainer = Color(0xFF304A5B),
-    onSecondaryContainer = Color(0xFFD4E9F9),
-    background = Color(0xFF0C171D),
-    onBackground = Color(0xFFE0E9EA),
-    surface = Color(0xFF13232B),
-    onSurface = Color(0xFFE0E9EA),
-    surfaceVariant = Color(0xFF20343B),
-    onSurfaceVariant = Color(0xFFB5C8CA),
+    primary = Color(0xFFD9B45A),
+    onPrimary = Color(0xFF12372A),
+    primaryContainer = Color(0xFF1F7A58),
+    onPrimaryContainer = Color(0xFFF4F7F3),
+    secondary = Color(0xFFA8D5BE),
+    onSecondary = Color(0xFF12372A),
+    secondaryContainer = Color(0xFF294C3A),
+    onSecondaryContainer = Color(0xFFE6EFE9),
+    background = Color(0xFF0D1913),
+    onBackground = Color(0xFFEAF2EC),
+    surface = Color(0xFF15271D),
+    onSurface = Color(0xFFEAF2EC),
+    surfaceVariant = Color(0xFF243B2D),
+    onSurfaceVariant = Color(0xFFB8CBBB),
     error = Color(0xFFFFB4AB),
     onError = Color(0xFF690005),
 )
@@ -505,7 +505,7 @@ private fun SatrDashboard(
                         HowItWorksCard()
                     }
                     Text(
-                        "دِكو سَتر · أداة تجريبية للخصوصية البصرية · 0.4.0",
+                        "ستر بلور · من Deku Foundation · إصدار تجريبي 0.4.1",
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -527,25 +527,25 @@ private fun SatrHeader() {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Image(
                 painter = painterResource(R.drawable.ic_satr),
-                contentDescription = "شعار دِكو سَتر",
+                contentDescription = "شعار ستر بلور",
                 modifier = Modifier.size(48.dp).clip(RoundedCornerShape(15.dp)),
             )
             Spacer(Modifier.width(10.dp))
             Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 Text(
-                    "دِكو سَتر",
+                    "ستر بلور",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.ExtraBold,
                 )
                 Text(
-                    "حماية بصرية محلية",
+                    "من Deku Foundation",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
         StatusPill(
-            label = "على الجهاز",
+            label = "معالجة محلية",
             container = MaterialTheme.colorScheme.primaryContainer,
             foreground = MaterialTheme.colorScheme.onPrimaryContainer,
         )
@@ -560,7 +560,7 @@ private fun HeroPanel() {
             .clip(RoundedCornerShape(28.dp))
             .background(
                 Brush.linearGradient(
-                    listOf(Color(0xFF112B3A), Color(0xFF176E66), Color(0xFF1B8278)),
+                    listOf(Color(0xFF12372A), Color(0xFF1F7A58), Color(0xFF245C43)),
                 ),
             )
             .padding(horizontal = 22.dp, vertical = 22.dp),
@@ -574,13 +574,13 @@ private fun HeroPanel() {
                         .background(Color.White.copy(alpha = 0.13f)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    ShieldGlyph(Modifier.size(21.dp), Color(0xFFB9F1E7))
+                    ShieldGlyph(Modifier.size(21.dp), Color(0xFFD9B45A))
                 }
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    "جلسة اختيارية تتحكم بها أنت",
+                    "تحكم واضح في جلسة التمويه",
                     style = MaterialTheme.typography.labelLarge,
-                    color = Color(0xFFB9F1E7),
+                    color = Color(0xFFD9B45A),
                 )
             }
             Text(
@@ -591,7 +591,7 @@ private fun HeroPanel() {
                 lineHeight = 35.sp,
             )
             Text(
-                text = "يعالج التطبيق إطار الشاشة محلياً ثم يرسم تمويهاً تجريبياً على المناطق التي يرصدها النموذج.",
+                text = "يحلّل الإطارات على الهاتف ويطمس المناطق التي يكتشفها. قد يفوت النموذج بعض الأشخاص.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color(0xFFE2F1F1),
                 lineHeight = 23.sp,
