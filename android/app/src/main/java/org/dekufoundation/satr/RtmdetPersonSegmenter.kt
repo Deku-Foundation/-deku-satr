@@ -224,9 +224,9 @@ class RtmdetPersonSegmenter(context: Context) : PersonSegmentationEngine {
     }
 
     private companion object {
-        const val MODEL_FILE = "rtmdet-ins_s_640x640.onnx"
-        const val MODEL_SHA256 = "9cd1787fbf3eb2bd64cc2d8154f41c036f5484b85599e1cbe0227a2dc5a4a08b"
-        const val MODEL_BYTES = 43_236_976L
+        const val MODEL_FILE = "rtmdet-ins_tiny_640x640.onnx"
+        const val MODEL_SHA256 = "99ee670820c4493aa13e20578b6a8e39781c319846dc41796a77765734beac5c"
+        const val MODEL_BYTES = 24_032_356L
         const val INPUT_SIZE = 640
         const val PERSON_CLASS_ID = 0L
         const val SCORE_THRESHOLD = 0.30f
