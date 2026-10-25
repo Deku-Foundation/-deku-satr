@@ -397,6 +397,8 @@ private fun SatrDashboard(
     var blurStrength by rememberSaveable { mutableFloatStateOf(FilterSettings.blurStrengthPercent.toFloat()) }
     var confidenceThreshold by rememberSaveable { mutableFloatStateOf(FilterSettings.confidenceThreshold) }
     var maskExpansion by rememberSaveable { mutableFloatStateOf(FilterSettings.maskExpansionRadius.toFloat()) }
+    var effectName by rememberSaveable { mutableStateOf(FilterSettings.effect.name) }
+    val effect = runCatching { PrivacyEffect.valueOf(effectName) }.getOrDefault(PrivacyEffect.BLUR)
     val scrollState = rememberScrollState()
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -469,6 +471,12 @@ private fun SatrDashboard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         FilterSettingsCard(
+                            effect = effect,
+                            onEffectChange = {
+                                effectName = it.name
+                                FilterSettings.effect = it
+                                onSaveFilterSettings()
+                            },
                             blurStrength = blurStrength,
                             onBlurStrengthChange = {
                                 blurStrength = it
@@ -490,6 +498,7 @@ private fun SatrDashboard(
                                 blurStrength = FilterSettings.blurStrengthPercent.toFloat()
                                 confidenceThreshold = FilterSettings.confidenceThreshold
                                 maskExpansion = FilterSettings.maskExpansionRadius.toFloat()
+                                effectName = FilterSettings.effect.name
                                 onSaveFilterSettings()
                             },
                         )
@@ -593,7 +602,7 @@ private fun HeroPanel() {
             Text(
                 text = "يحلّل الإطارات على الهاتف ويطمس المناطق التي يكتشفها. قد يفوت النموذج بعض الأشخاص.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color(0xFFE2F1F1),
+                color = Color(0xFFF4F7F3),
                 lineHeight = 23.sp,
             )
             Row(
@@ -808,6 +817,8 @@ private fun ControlCard(
 
 @Composable
 private fun FilterSettingsCard(
+    effect: PrivacyEffect,
+    onEffectChange: (PrivacyEffect) -> Unit,
     blurStrength: Float,
     onBlurStrengthChange: (Float) -> Unit,
     confidenceThreshold: Float,
@@ -823,7 +834,19 @@ private fun FilterSettingsCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("قوة التمويه", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("طريقة الإخفاء", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                listOf(PrivacyEffect.BLUR to "تمويه", PrivacyEffect.PIXELATE to "بكسلة", PrivacyEffect.COVER to "تغطية").forEach { (option, label) ->
+                    val selected = effect == option
+                    if (selected) {
+                        Button(onClick = { onEffectChange(option) }, modifier = Modifier.weight(1f).height(48.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp), shape = RoundedCornerShape(14.dp)) { Text(label, maxLines = 1) }
+                    } else {
+                        OutlinedButton(onClick = { onEffectChange(option) }, modifier = Modifier.weight(1f).height(48.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp), shape = RoundedCornerShape(14.dp)) { Text(label, maxLines = 1) }
+                    }
+                }
+            }
+            if (effect != PrivacyEffect.COVER) {
+            Text(if (effect == PrivacyEffect.BLUR) "قوة التمويه" else "حجم البكسلة", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("قوة التمويه", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                 StatusPill(
@@ -839,6 +862,7 @@ private fun FilterSettingsCard(
                 steps = 8,
                 onValueChangeFinished = onSave,
             )
+            }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("حساسية اكتشاف الأشخاص", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
@@ -1036,7 +1060,7 @@ private fun ModelCard(snapshot: SatrSessionSnapshot) {
                 Spacer(Modifier.width(11.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text("نموذج الأشخاص", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("ML Kit Selfie Segmentation", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("ML Kit · وضع البث المرئي", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 StatusPill(
                     label = if (snapshot.modelReady) "جاهز" else "مضمّن",
@@ -1045,8 +1069,8 @@ private fun ModelCard(snapshot: SatrSessionSnapshot) {
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
-                StatusPill("مضمّن داخل APK", MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
-                StatusPill("Beta · 16.0.0-beta6", MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant)
+                StatusPill("يعمل دون اتصال", MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
+                StatusPill("نسخة تجريبية", MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(
                 "حزمة النموذج تزيد حجم التطبيق بنحو 4.5 MB وفق وثائق Google. لا يلزم تنزيل أوزان النموذج عند التشغيل، ولا تُطلب صلاحية الإنترنت من التطبيق.",
