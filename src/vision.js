@@ -15,8 +15,8 @@ function reportProgress(callback, item) {
   if (typeof callback !== "function") return;
   const file = item?.file ? String(item.file).split("/").pop() : "model";
   callback(typeof item?.progress === "number"
-    ? \`Downloading \${file} · \${Math.round(item.progress)}%\`
-    : \`Preparing \${file}…\`);
+    ? `Downloading ${file} · ${Math.round(item.progress)}%`
+    : `Preparing ${file}…`);
 }
 
 export async function loadSegmenter(onProgress = () => {}) {
@@ -92,7 +92,7 @@ export function renderMaskedBlur(sourceCanvas, mask, outputCanvas, blurStrength 
   overlay.width = width;
   overlay.height = height;
   const overlayContext = overlay.getContext("2d");
-  overlayContext.filter = \`blur(\${Math.max(2, Number(blurStrength) || 18)}px)\`;
+  overlayContext.filter = `blur(${Math.max(2, Number(blurStrength) || 18)}px)`;
   overlayContext.drawImage(sourceCanvas, 0, 0, width, height);
   overlayContext.filter = "none";
   overlayContext.globalCompositeOperation = "destination-in";
