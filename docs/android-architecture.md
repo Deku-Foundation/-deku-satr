@@ -6,7 +6,7 @@ Updated: 2026-10-25. Version 0.4.0 contains an embedded segmentation baseline, s
 
 - Kotlin Android app: min SDK 26, compile/target SDK 36, JDK 17, AGP 9.3.0, Gradle 9.5.0.
 - Arabic-first Material 3 UI with Home/Settings destinations, adaptive maximum width, permission state, inference metrics, and locally persisted blur/sensitivity/mask expansion.
-- Compose UI/Foundation 1.11.4, the newest stable series compatible with the stable Android API 36 toolchain used here.
+- Compose UI/Foundation 1.12.1 (stable) with compileSdk 37.
 - Explicit user permission for overlay access and fresh MediaProjection consent for each capture session.
 - A mediaProjection foreground service with persistent notification and immediate stop action.
 - A touch-pass-through transparent full-screen filter overlay and a separate draggable status/stop panel.
@@ -17,11 +17,11 @@ Updated: 2026-10-25. Version 0.4.0 contains an embedded segmentation baseline, s
 
 ## Why this dependency set
 
-Compose 1.12.1 was considered but requires compileSdk 37 and AGP 9.2+; the Android SDK setup on the current CI runner did not provide the API 37 platform package. Rather than depend on an unavailable/preview SDK, this branch uses the latest stable Compose 1.11.4 release with API 36 and AGP 8.13.2.
+Compose 1.12.1 was considered but requires compileSdk 37 and AGP 9.2+; the Android SDK setup on the current CI runner did not provide the API 37 platform package. Compose 1.12 requires compileSdk 37, so the branch now installs API 37 in CI and uses AGP 9.3.0 with Gradle 9.5.0.
 
 Official release notes:
-- Compose UI 1.11.4: https://developer.android.com/jetpack/androidx/releases/compose-ui
-- Compose Foundation 1.11.4: https://developer.android.com/jetpack/androidx/releases/compose-foundation
+- Compose UI 1.12.1: https://developer.android.com/jetpack/androidx/releases/compose-ui
+- Compose Foundation 1.12.1: https://developer.android.com/jetpack/androidx/releases/compose-foundation
 - Material 3 1.4.0: https://developer.android.com/jetpack/androidx/releases/compose-material3
 - AGP 8.13.2: https://developer.android.com/build/releases/past-releases/agp-8-13-0-release-notes
 
@@ -58,7 +58,7 @@ If a device cannot reliably capture or composite the overlay, the UI must clearl
 
 ## Build locally
 
-Install JDK 17, Gradle 9.5.0, Android SDK Platform 36 and accept the SDK licenses:
+Install JDK 17, Gradle 9.5.0, Android SDK Platform 37 and accept the SDK licenses:
 
     gradle --no-daemon -p android testDebugUnitTest assembleDebug
 
@@ -115,3 +115,12 @@ Official sources:
 - https://developer.android.com/build/migrate-to-built-in-kotlin
 - https://kotlinlang.org/docs/gradle-configure-project.html
 - https://developers.google.com/ml-kit/vision/selfie-segmentation/android
+
+
+### Compose update (2026-10-25)
+The stable Compose UI and Foundation version is now pinned to 1.12.1 and the compile SDK is 37, as required by the Compose 1.12 line. CI installs Android platform 37 and Build Tools 36.0.0. targetSdk is deliberately unchanged at 36 to keep runtime behavior changes separate from the build toolchain migration.
+
+References:
+- https://developer.android.com/jetpack/androidx/releases/compose-ui
+- https://developer.android.com/jetpack/androidx/releases/compose-foundation
+- https://developer.android.com/develop/ui/compose/setup-compose-dependencies-and-compiler

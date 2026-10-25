@@ -29,7 +29,7 @@ https://github.com/Deku-Foundation/deku-satr/actions/workflows/android.yml
 
 Download the deku-satr-debug-apk artifact from a completed run. It is a debug build, not a production-signed release.
 
-To build locally, install JDK 17, Gradle 9.5.0, Android SDK Platform 36, and accept the SDK licenses:
+To build locally, install JDK 17, Gradle 9.5.0, Android SDK Platform 37, and accept the SDK licenses:
 
     gradle --no-daemon -p android testDebugUnitTest assembleDebug
 
@@ -75,4 +75,4 @@ Repository code is MIT-licensed. ML Kit, AndroidX, and other third-party librari
 Home contains session status and Start/Stop. Filter strength, confidence threshold and mask expansion are on the Settings destination and persist locally when saved. Denying POST_NOTIFICATIONS no longer blocks the capture flow; Android may restrict the notification's drawer visibility while the system foreground-service rules and the app/overlay Stop controls remain in force. Metrics are throttled to avoid recomposing the whole dashboard at inference frequency.
 
 ## Android build tools
-Build plugin and library pins live in android/gradle/libs.versions.toml. The current toolchain is AGP 9.3.0, Gradle 9.5.0 and JDK 17. The existing Kotlin/Compose compiler plugins are kept through explicit AGP migration flags until the built-in Kotlin/new DSL migration has its own validation.
+Build plugin and library pins live in android/gradle/libs.versions.toml. The current toolchain is AGP 9.3.0, Gradle 9.5.0, Compose UI/Foundation 1.12.1, compileSdk 37 and JDK 17. The existing Kotlin/Compose compiler plugins are kept through explicit AGP migration flags until the built-in Kotlin/new DSL migration has its own validation.

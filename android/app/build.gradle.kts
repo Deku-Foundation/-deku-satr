@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "org.dekufoundation.satr"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "org.dekufoundation.satr"
