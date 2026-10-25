@@ -2,7 +2,7 @@ package org.dekufoundation.satr
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertSame
 import org.junit.Test
 
 class TemporalMaskSmootherTest {
@@ -64,8 +64,7 @@ class TemporalMaskSmootherTest {
     fun outputReusesTheCurrentInferenceBuffer() {
         val smoother = TemporalMaskSmoother()
         val current = floatArrayOf(0.5f)
-        assertNotSame(current, floatArrayOf(0f))
         val result = smoother.smooth(current, width = 1, height = 1, timestampMs = 100L)
-        assertEquals(current, result)
+        assertSame(current, result)
     }
 }
