@@ -24,12 +24,6 @@ import android.os.IBinder
 import android.os.SystemClock
 import android.util.DisplayMetrics
 import android.view.Display
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.segmentation.Segmentation
-import com.google.mlkit.vision.segmentation.SegmentationMask
-import com.google.mlkit.vision.segmentation.Segmenter
-import com.google.mlkit.vision.segmentation.selfie.SelfieSegmenterOptions
-import java.nio.ByteOrder
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -41,7 +35,7 @@ class ScreenCaptureService : Service() {
     private var captureThread: HandlerThread? = null
     private var captureHandler: Handler? = null
     private var overlayController: OverlayController? = null
-    private var segmenter: Segmenter? = null
+    private var segmenter: LrasppPersonSegmenter? = null
     private var inferenceExecutor: ExecutorService? = null
     private val inferenceBusy = AtomicBoolean(false)
 
@@ -192,11 +186,7 @@ class ScreenCaptureService : Service() {
             "The user-visible overlay could not be shown."
         }
 
-        val options = SelfieSegmenterOptions.Builder()
-            .setDetectorMode(SelfieSegmenterOptions.STREAM_MODE)
-            .enableRawSizeMask()
-            .build()
-        segmenter = Segmentation.getClient(options)
+        segmenter = LrasppPersonSegmenter(this)
         inferenceExecutor = Executors.newSingleThreadExecutor { runnable ->
             Thread(runnable, "DekuSatrInference").apply { isDaemon = true }
         }
@@ -337,178 +327,132 @@ class ScreenCaptureService : Service() {
             return
         }
 
+        val worker = inferenceExecutor
+        val currentSegmenter = segmenter
+        if (worker == null || currentSegmenter == null) {
+            frame.recycle()
+            inferenceBusy.set(false)
+            failClosed("محرك تقسيم الأشخاص غير متاح؛ غُطّيت الشاشة احتياطياً.", frameGeneration)
+            return
+        }
         val startedAt = SystemClock.elapsedRealtime()
         try {
-            val input = InputImage.fromBitmap(frame, 0)
-            val currentSegmenter = segmenter
-                ?: throw IllegalStateException("The segmentation engine is unavailable.")
-            currentSegmenter.process(input)
-                .addOnCompleteListener { task ->
-                    if (stopping || frameGeneration != captureGeneration) {
-                        if (!frame.isRecycled) frame.recycle()
-                        inferenceBusy.set(false)
-                        if (stopping) closeSegmenterIfSafe()
-                        return@addOnCompleteListener
-                    }
-
-                    val worker = inferenceExecutor
-                    if (worker == null) {
-                        if (!frame.isRecycled) frame.recycle()
-                        inferenceBusy.set(false)
-                        closeSegmenterIfSafe()
-                        return@addOnCompleteListener
-                    }
-
-                    try {
-                        worker.execute {
-                            try {
-                                if (stopping || frameGeneration != captureGeneration) return@execute
-                                if (!task.isSuccessful) {
-                                    failClosed("فشل تحليل الإطار؛ غُطّيت الشاشة حتى عودة المعالجة.", frameGeneration)
-                                    return@execute
-                                }
-                                val mask = task.result
-                                    ?: throw IllegalStateException("The segmentation mask was empty.")
-                                val freshValues = copyConfidence(mask)
-                                val threshold = FilterSettings.confidenceThreshold
-                                val expansion = FilterSettings.maskExpansionRadius
-                                val freshCoverage = PersonMaskMath.coveragePercent(
-                                    PersonMaskMath.thresholdAndDilate(
-                                        confidence = freshValues,
-                                        width = mask.width,
-                                        height = mask.height,
-                                        threshold = threshold,
-                                        radiusX = expansion,
-                                        radiusY = expansion,
-                                    ),
-                                )
-                                val frameNow = SystemClock.elapsedRealtime()
-                                val values = synchronized(this) {
-                                    if (freshCoverage > MIN_PERSON_COVERAGE_PERCENT) {
-                                        lastGoodConfidence = freshValues.copyOf()
-                                        lastGoodMaskWidth = mask.width
-                                        lastGoodMaskHeight = mask.height
-                                        lastGoodMaskAtMs = frameNow
-                                        freshValues
-                                    } else {
-                                        val cached = lastGoodConfidence
-                                        val reusePrevious = MaskHoldPolicy.shouldReusePreviousMask(
-                                            freshCoveragePercent = freshCoverage,
-                                            minimumCoveragePercent = MIN_PERSON_COVERAGE_PERCENT,
-                                            previousMaskAvailable = cached != null,
-                                            dimensionsMatch = lastGoodMaskWidth == mask.width &&
-                                                lastGoodMaskHeight == mask.height,
-                                            ageMs = frameNow - lastGoodMaskAtMs,
-                                            maximumAgeMs = MASK_HOLD_MS,
-                                        )
-                                        if (reusePrevious) cached!!.copyOf() else freshValues
-                                    }
-                                }
-                                val rendered = PrivacyRenderer.render(
-                                    source = frame,
-                                    confidence = values,
-                                    maskWidth = mask.width,
-                                    maskHeight = mask.height,
-                                    blurRadius = FilterSettings.blurRadius,
-                                    threshold = FilterSettings.confidenceThreshold,
-                                    maskExpansionRadius = expansion,
-                                    effect = FilterSettings.effect,
-                                )
-                                val activeOverlay = overlayController
-                                if (activeOverlay == null) {
-                                    if (!rendered.overlay.isRecycled) rendered.overlay.recycle()
-                                    return@execute
-                                }
-
-                                val latencyMs = (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(0L)
-                                var published = false
-                                synchronized(this) {
-                                    if (!stopping && frameGeneration == captureGeneration) {
-                                        val previous = SessionStatus.current()
-                                        val detectedNow = rendered.coveragePercent > MIN_PERSON_COVERAGE_PERCENT
-                                        if (detectedNow) {
-                                            personFramesInARow = (personFramesInARow + 1).coerceAtMost(3)
-                                            emptyFramesInARow = 0
-                                        } else {
-                                            emptyFramesInARow = (emptyFramesInARow + 1).coerceAtMost(4)
-                                            personFramesInARow = 0
-                                        }
-                                        val detected = if (previous.phase == SatrPhase.FILTERING) {
-                                            emptyFramesInARow < EMPTY_FRAMES_TO_CLEAR_MASK
-                                        } else {
-                                            personFramesInARow >= PERSON_FRAMES_TO_CONFIRM
-                                        }
-                                        val next = previous.copy(
-                                            phase = if (detected) SatrPhase.FILTERING else SatrPhase.NO_PERSON_DETECTED,
-                                            detail = if (detected) {
-                                                "يُطبّق التمويه على المناطق التي يرصدها النموذج."
-                                            } else {
-                                                "لم تُرصد منطقة شخص بوضوح؛ قد يفوّت النموذج الأجسام الصغيرة."
-                                            },
-                                            processedFrames = previous.processedFrames + 1,
-                                            lastInferenceMs = latencyMs,
-                                            maskCoveragePercent = rendered.coveragePercent,
-                                            modelReady = true,
-                                        )
-                                        lastSuccessfulFrameMs = SystemClock.elapsedRealtime()
-                                        // Keep the last mask for two empty/noisy frames. Publishing a
-                                        // transparent mask immediately makes the overlay visibly blink on
-                                        // videos and animated feeds; clear it only after stable absence.
-                                        val shouldUpdateMask =
-                                            detected ||
-                                                rendered.coveragePercent > MIN_PERSON_COVERAGE_PERCENT ||
-                                                emptyFramesInARow >= EMPTY_FRAMES_TO_CLEAR_MASK
-                                        if (shouldUpdateMask) {
-                                            activeOverlay.updateFilterFrame(rendered.overlay, rendered.coveragePercent)
-                                        } else if (!rendered.overlay.isRecycled) {
-                                            rendered.overlay.recycle()
-                                        }
-                                        activeOverlay.updateSession(next)
-                                        SessionStatus.publish(next)
-                                        published = true
-                                    }
-                                }
-                                if (!published && !rendered.overlay.isRecycled) rendered.overlay.recycle()
-                            } catch (_: Exception) {
-                                if (!stopping && frameGeneration == captureGeneration) {
-                                    failClosed("تعذر إنشاء قناع التمويه؛ غُطّيت الشاشة احتياطياً.", frameGeneration)
-                                }
-                            } finally {
-                                if (!frame.isRecycled) frame.recycle()
-                                inferenceBusy.set(false)
-                                if (stopping) closeSegmenterIfSafe()
-                            }
+            worker.execute {
+                try {
+                    if (stopping || frameGeneration != captureGeneration) return@execute
+                    val mask = currentSegmenter.process(frame)
+                    val freshValues = mask.confidence
+                    val threshold = FilterSettings.confidenceThreshold
+                    val expansion = FilterSettings.maskExpansionRadius
+                    val freshCoverage = PersonMaskMath.coveragePercent(
+                        PersonMaskMath.thresholdAndDilate(
+                            confidence = freshValues,
+                            width = mask.width,
+                            height = mask.height,
+                            threshold = threshold,
+                            radiusX = expansion,
+                            radiusY = expansion,
+                        ),
+                    )
+                    val frameNow = SystemClock.elapsedRealtime()
+                    val values = synchronized(this) {
+                        if (freshCoverage > MIN_PERSON_COVERAGE_PERCENT) {
+                            lastGoodConfidence = freshValues.copyOf()
+                            lastGoodMaskWidth = mask.width
+                            lastGoodMaskHeight = mask.height
+                            lastGoodMaskAtMs = frameNow
+                            freshValues
+                        } else {
+                            val cached = lastGoodConfidence
+                            val reusePrevious = MaskHoldPolicy.shouldReusePreviousMask(
+                                freshCoveragePercent = freshCoverage,
+                                minimumCoveragePercent = MIN_PERSON_COVERAGE_PERCENT,
+                                previousMaskAvailable = cached != null,
+                                dimensionsMatch = lastGoodMaskWidth == mask.width &&
+                                    lastGoodMaskHeight == mask.height,
+                                ageMs = frameNow - lastGoodMaskAtMs,
+                                maximumAgeMs = MASK_HOLD_MS,
+                            )
+                            if (reusePrevious) cached!!.copyOf() else freshValues
                         }
-                    } catch (_: java.util.concurrent.RejectedExecutionException) {
-                        if (!frame.isRecycled) frame.recycle()
-                        inferenceBusy.set(false)
-                        if (stopping) closeSegmenterIfSafe()
                     }
+                    val rendered = PrivacyRenderer.render(
+                        source = frame,
+                        confidence = values,
+                        maskWidth = mask.width,
+                        maskHeight = mask.height,
+                        blurRadius = FilterSettings.blurRadius,
+                        threshold = FilterSettings.confidenceThreshold,
+                        maskExpansionRadius = expansion,
+                        effect = FilterSettings.effect,
+                    )
+                    val activeOverlay = overlayController
+                    if (activeOverlay == null) {
+                        if (!rendered.overlay.isRecycled) rendered.overlay.recycle()
+                        return@execute
+                    }
+
+                    val latencyMs = (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(0L)
+                    var published = false
+                    synchronized(this) {
+                        if (!stopping && frameGeneration == captureGeneration) {
+                            val previous = SessionStatus.current()
+                            val detectedNow = rendered.coveragePercent > MIN_PERSON_COVERAGE_PERCENT
+                            if (detectedNow) {
+                                personFramesInARow = (personFramesInARow + 1).coerceAtMost(3)
+                                emptyFramesInARow = 0
+                            } else {
+                                emptyFramesInARow = (emptyFramesInARow + 1).coerceAtMost(4)
+                                personFramesInARow = 0
+                            }
+                            val detected = if (previous.phase == SatrPhase.FILTERING) {
+                                emptyFramesInARow < EMPTY_FRAMES_TO_CLEAR_MASK
+                            } else {
+                                personFramesInARow >= PERSON_FRAMES_TO_CONFIRM
+                            }
+                            val next = previous.copy(
+                                phase = if (detected) SatrPhase.FILTERING else SatrPhase.NO_PERSON_DETECTED,
+                                detail = if (detected) {
+                                    "يُطبّق التمويه على المناطق التي يرصدها نموذج LR-ASPP."
+                                } else {
+                                    "لم تُرصد منطقة شخص بوضوح؛ قد يفوّت النموذج الأجسام الصغيرة."
+                                },
+                                processedFrames = previous.processedFrames + 1,
+                                lastInferenceMs = latencyMs,
+                                maskCoveragePercent = rendered.coveragePercent,
+                                modelReady = true,
+                            )
+                            lastSuccessfulFrameMs = SystemClock.elapsedRealtime()
+                            val shouldUpdateMask =
+                                detected ||
+                                    rendered.coveragePercent > MIN_PERSON_COVERAGE_PERCENT ||
+                                    emptyFramesInARow >= EMPTY_FRAMES_TO_CLEAR_MASK
+                            if (shouldUpdateMask) {
+                                activeOverlay.updateFilterFrame(rendered.overlay, rendered.coveragePercent)
+                            } else if (!rendered.overlay.isRecycled) {
+                                rendered.overlay.recycle()
+                            }
+                            activeOverlay.updateSession(next)
+                            SessionStatus.publish(next)
+                            published = true
+                        }
+                    }
+                    if (!published && !rendered.overlay.isRecycled) rendered.overlay.recycle()
+                } catch (_: Exception) {
+                    if (!stopping && frameGeneration == captureGeneration) {
+                        failClosed("تعذر إنشاء قناع الأشخاص؛ غُطّيت الشاشة احتياطياً.", frameGeneration)
+                    }
+                } finally {
+                    if (!frame.isRecycled) frame.recycle()
+                    inferenceBusy.set(false)
+                    if (stopping) closeSegmenterIfSafe()
                 }
-        } catch (_: Exception) {
+            }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
             if (!frame.isRecycled) frame.recycle()
             inferenceBusy.set(false)
             if (stopping) closeSegmenterIfSafe()
-            else if (frameGeneration == captureGeneration) {
-                failClosed("تعذر تشغيل النموذج؛ غُطّيت الشاشة احتياطياً.", frameGeneration)
-            }
         }
-    }
-
-    private fun copyConfidence(mask: SegmentationMask): FloatArray {
-        val pixelCount = mask.width.toLong() * mask.height.toLong()
-        require(
-            mask.width > 0 &&
-                mask.height > 0 &&
-                pixelCount in 1..MAX_MASK_PIXELS.toLong(),
-        ) { "Invalid model mask dimensions." }
-        val count = pixelCount.toInt()
-        val buffer = mask.buffer.duplicate().order(ByteOrder.nativeOrder())
-        buffer.rewind()
-        require(buffer.remaining().toLong() >= count.toLong() * Float.SIZE_BYTES) {
-            "The model returned an incomplete mask."
-        }
-        return FloatArray(count) { buffer.float.coerceIn(0f, 1f) }
     }
 
     private fun imageToBitmap(image: Image): Bitmap {
