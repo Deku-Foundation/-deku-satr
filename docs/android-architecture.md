@@ -156,6 +156,6 @@ Release gates still open:
 
 ## Selective targeting and temporal behavior
 
-The live pipeline holds a previous mask only briefly (160 ms) when the fresh semantic result is effectively empty and dimensions still match. This reduces a single-frame dropout without retaining a stale mask for most of a second, which can cause visible trails when people move. It is a trade-off, not optical-flow tracking; test on real devices before claiming flicker-free operation.
+The live pipeline holds a previous mask only briefly (250 ms) when the fresh semantic result is effectively empty and dimensions still match. This reduces a single-frame dropout without retaining a stale mask for most of a second, which can cause visible trails when people move. It is a trade-off, not optical-flow tracking; test on real devices before claiming flicker-free operation.
 
 The current LR-ASPP output is a single semantic mask for the person class. It cannot provide per-person controls or gender categories. Selective policies require a separately licensed instance-segmentation backend and explicit user-selected target labels; visual gender inference from hair/clothing is not implemented. See the model evaluation decision and its licensing notes.
