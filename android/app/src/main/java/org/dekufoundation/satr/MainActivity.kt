@@ -53,7 +53,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -68,7 +67,6 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -488,17 +486,10 @@ private fun SatrDashboard(
  var maskExpansion by rememberSaveable { mutableFloatStateOf(FilterSettings.maskExpansionRadius.toFloat()) }
  var effectName by rememberSaveable { mutableStateOf(FilterSettings.effect.name) }
  var profileName by rememberSaveable { mutableStateOf(FilterSettings.processingProfile.name) }
- var personModelProfileName by rememberSaveable { mutableStateOf(FilterSettings.personModelProfile.name) }
- var targetModeName by rememberSaveable { mutableStateOf(FilterSettings.personTargetMode.name) }
- var selectedPersonIds by rememberSaveable { mutableStateOf(FilterSettings.selectedPersonTrackIds) }
  var modelProfileName by rememberSaveable { mutableStateOf(FilterSettings.personModelProfile.name) }
  val modelProfile=runCatching { PersonModelProfile.valueOf(modelProfileName) }.getOrDefault(PersonModelProfile.FAST_SEMANTIC)
  val effect=runCatching { PrivacyEffect.valueOf(effectName) }.getOrDefault(PrivacyEffect.BLUR)
  val profile=runCatching { ProcessingProfile.valueOf(profileName) }.getOrDefault(ProcessingProfile.BALANCED)
- val personModelProfile=runCatching { PersonModelProfile.valueOf(personModelProfileName) }.getOrDefault(PersonModelProfile.FAST_SEMANTIC)
- val targetMode=runCatching { PersonTargetMode.valueOf(targetModeName) }.getOrDefault(PersonTargetMode.MASK_ALL)
- LaunchedEffect(snapshot.personTargetMode) { targetModeName = snapshot.personTargetMode.name }
- LaunchedEffect(snapshot.selectedTrackIds) { selectedPersonIds = snapshot.selectedTrackIds }
  val scrollState=rememberScrollState()
  Surface(Modifier.fillMaxSize(),color=MaterialTheme.colorScheme.background) {
   Scaffold(containerColor=MaterialTheme.colorScheme.background,bottomBar={
@@ -535,43 +526,18 @@ private fun SatrDashboard(
         OutlinedButton(onClick=onSaveImage,enabled=processedImage!=null&&!mediaBusy,modifier=Modifier.weight(1f).heightIn(min=52.dp),shape=RoundedCornerShape(16.dp)){Text("حفظ نسخة")}
        }
        FilterSettingsCard(effect,{effectName=it.name;FilterSettings.effect=it;onSaveFilterSettings()},blurStrength,{blurStrength=it;FilterSettings.blurStrengthPercent=it.roundToInt()},confidenceThreshold,{confidenceThreshold=it;FilterSettings.confidenceThreshold=it},maskExpansion,{maskExpansion=it;FilterSettings.maskExpansionRadius=it.roundToInt()},onSaveFilterSettings){
-        FilterSettings.resetToDefaults();blurStrength=FilterSettings.blurStrengthPercent.toFloat();confidenceThreshold=FilterSettings.confidenceThreshold;maskExpansion=FilterSettings.maskExpansionRadius.toFloat();effectName=FilterSettings.effect.name;profileName=FilterSettings.processingProfile.name;personModelProfileName=FilterSettings.personModelProfile.name;onSaveFilterSettings()
+        FilterSettings.resetToDefaults();blurStrength=FilterSettings.blurStrengthPercent.toFloat();confidenceThreshold=FilterSettings.confidenceThreshold;maskExpansion=FilterSettings.maskExpansionRadius.toFloat();effectName=FilterSettings.effect.name;profileName=FilterSettings.processingProfile.name;modelProfileName=FilterSettings.personModelProfile.name;onSaveFilterSettings()
        }
       }
       else -> {
        Text("الإعدادات",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
        Text("اختر التوازن بين سرعة المعالجة وتفاصيل القناع. حجم الالتقاط يُطبّق عند بدء جلسة جديدة.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
        ProcessingProfileCard(profile){profileName=it.name;FilterSettings.processingProfile=it;onSaveFilterSettings()}
-       PersonModelSelectionCard(personModelProfile, snapshot.personModelProfile) {
-        personModelProfileName = it.name
-        FilterSettings.personModelProfile = it
-        onSaveFilterSettings()
-       }
        PersonModelCard(modelProfile){ modelProfileName=it.name; FilterSettings.personModelProfile=it; onSaveFilterSettings() }
        PersonTargetControls(snapshot, onUpdateTarget)
        FilterSettingsCard(effect,{effectName=it.name;FilterSettings.effect=it;onSaveFilterSettings()},blurStrength,{blurStrength=it;FilterSettings.blurStrengthPercent=it.roundToInt()},confidenceThreshold,{confidenceThreshold=it;FilterSettings.confidenceThreshold=it},maskExpansion,{maskExpansion=it;FilterSettings.maskExpansionRadius=it.roundToInt()},onSaveFilterSettings){
         FilterSettings.resetToDefaults();blurStrength=FilterSettings.blurStrengthPercent.toFloat();confidenceThreshold=FilterSettings.confidenceThreshold;maskExpansion=FilterSettings.maskExpansionRadius.toFloat();effectName=FilterSettings.effect.name;profileName=FilterSettings.processingProfile.name;modelProfileName=FilterSettings.personModelProfile.name;onSaveFilterSettings()
        }
-       PersonTargetingCard(
-        snapshot = snapshot,
-        selectedProfile = personModelProfile,
-        mode = targetMode,
-        selectedTrackIds = selectedPersonIds,
-        onModeChange = {
-         targetModeName = it.name
-         FilterSettings.personTargetMode = it
-         onSaveFilterSettings()
-        },
-        onTogglePerson = { trackId, checked ->
-         val next = if (checked) selectedPersonIds + trackId else selectedPersonIds - trackId
-         selectedPersonIds = next
-         FilterSettings.selectedPersonTrackIds = next
-         if (next.isEmpty() && FilterSettings.personTargetMode == PersonTargetMode.MASK_SELECTED_ONLY) {
-          targetModeName = PersonTargetMode.MASK_ALL.name
-          FilterSettings.personTargetMode = PersonTargetMode.MASK_ALL
-         }
-        },
-       )
        PermissionsCard(overlayAllowed,notificationsAllowed,onGrantOverlay,onOpenNotificationSettings)
        ModelCard(snapshot, modelProfile);SafetyCard();HowItWorksCard()
       }
@@ -1185,30 +1151,6 @@ private fun PersonTargetControls(
                 }
             }
             Text("التصحيح هنا لا يدرّب أوزان النموذج تلقائياً. أرقام الأشخاص مؤقتة وقد تتغير عند اختفاء الشخص أو تغيّر المشهد؛ راجع الاختيار قبل الاعتماد عليه.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 19.sp)
-        }
-    }
-}
-
-@Composable
-private fun TargetScopeCard() {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-    ) {
-        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("نطاق التمويه", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            StatusPill(
-                label = "كل الأشخاص",
-                container = MaterialTheme.colorScheme.primaryContainer,
-                foreground = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-            Text(
-                "يمكنك طمس الجميع أو اختيار أشخاص بعينهم من إعدادات التصحيح عند استخدام نموذج التقسيم الفردي. لا يستنتج التطبيق الجنس من المظهر؛ اختر الأشخاص يدوياً لتجنب تخمينات غير موثوقة.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                lineHeight = 21.sp,
-            )
         }
     }
 }
