@@ -47,7 +47,7 @@ jobs:
           cache-provider: basic
 
       - name: Unit tests and debug APK
-        run: gradle --no-daemon -p android testDebugUnitTest assembleDebug
+        run: gradle --no-daemon --no-configuration-cache -p android testDebugUnitTest assembleDebug
 
       - name: Audit merged manifest for network permission
         shell: bash
