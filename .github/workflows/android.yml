@@ -16,7 +16,6 @@ permissions:
 
 jobs:
   android:
-    if: hashFiles('android/settings.gradle.kts') != ''
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -32,7 +31,9 @@ jobs:
 
       - name: Install Android SDK packages
         run: |
+          set +o pipefail
           yes | sdkmanager --licenses > /dev/null
+          set -o pipefail
           sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
       - name: Set up Gradle
