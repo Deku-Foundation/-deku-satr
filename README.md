@@ -1,58 +1,61 @@
 # Deku Satr
 
-**Privacy-first visual protection for images and a live camera preview.**
+**Local-first visual privacy tooling from Deku Foundation.**
 
-The first milestone is an installable Progressive Web App (PWA): choose an image or start the camera, run segmentation in the browser, and blur detected people. There is no image-upload endpoint, login, analytics, or application server.
+The long-term product goal is a lightweight tool that masks visible people in content across the Android screen, with desktop support planned later. The repository currently contains two different maturity levels: a browser prototype for testing mask quality, and an early native Android capture/overlay foundation.
 
-> **Prototype warning:** segmentation can miss people or leak pixels at boundaries. Do not rely on this version as a guaranteed safety filter; inspect the output before sharing sensitive media.
+> **Important:** The Android app on this branch is not a blur filter yet. It demonstrates the consent, capture-session, foreground-notification, and overlay-control plumbing. The native code intentionally does not read frame pixels or run a model. Do not rely on either prototype as a guaranteed safety filter.
 
-## Run locally
+## Native Android (active development)
 
-Requires Node.js 22.
+Path: android/
 
-\`\`\`sh
-npm install
-npm run dev
-\`\`\`
+- Kotlin Android app; min SDK 26, compile/target SDK 36.
+- Explicit overlay access and a fresh MediaProjection consent flow for every capture session.
+- A mediaProjection foreground service with a persistent notification and stop action.
+- A small floating overlay with its own stop action.
+- Capture surface downscaled to a maximum 960 px long edge before future inference.
+- No camera or microphone permission; no internet permission; no screenshot files or network upload.
+- Unit tests for the capture-size policy and a GitHub Actions workflow that builds the debug APK.
 
-Open the local URL Vite prints. Model weights download from Hugging Face on first inference; image/video pixels are processed in the browser. Camera access requires HTTPS or localhost.
+This milestone acquires and closes capture frames without reading their pixel planes. The overlay explicitly says that AI blur is inactive. Device-level validation, the overlay-feedback test, and actual person masking remain open.
 
-\`\`\`sh
-npm test
-npm run build
-npm run preview
-\`\`\`
+See docs/android-architecture.md and docs/android-privacy.md.
 
-## What works now
+## Browser research prototype
 
-- Local image selection, segmentation, masked blur, and PNG export.
-- Live camera preview with serial inference.
-- If camera inference has no usable person mask or fails, the entire preview is replaced with a solid obscuring frame.
-- WebGPU is attempted when available, with a WASM fallback.
-- Responsive PWA layout, mask-processing unit tests, and GitHub Actions checks.
+The root project is an installable Progressive Web App (PWA) for experimenting with selected images and a live camera preview in the browser.
 
-## Model baseline
+Requires Node.js 22:
 
-The current browser prototype uses \`Xenova/segformer-b0-finetuned-ade-512-512\` through Transformers.js. This is a semantic-segmentation baseline, **not the final tiny production model**. The upstream NVIDIA model card lists license \`other\`; model licensing must be resolved before bundling or shipping weights. Models are downloaded at run time and are not committed to Git.
+    npm install
+    npm run dev
+    npm test
+    npm run build
 
-See [model evaluation](docs/model-evaluation.md) and [roadmap](ROADMAP.md).
+The PWA currently uses Xenova/segformer-b0-finetuned-ade-512-512 through Transformers.js. This is a temporary semantic-segmentation baseline, not the production mobile model. Its upstream model license is listed as "other" and must be reviewed before bundling or shipping weights. Model weights are not committed to Git.
 
-## Privacy boundaries
+See docs/model-evaluation.md and ROADMAP.md.
 
-- Selected images and camera pixels are processed locally; the app has no server endpoint for uploading media.
-- The first-use model download makes network requests to the upstream model host, which can see ordinary download metadata.
-- Strict offline operation has not yet been audited.
-- This app handles selected images and the camera preview it starts. It is **not** a system-wide Android overlay and does not automatically protect other apps.
+## Android build
 
-## Structure
+Install JDK 17, Gradle 8.13, Android SDK Platform 36, and accept the SDK licenses:
 
-\`\`\`text
-src/                 Browser UI, inference, and mask utilities
-tests/               Deterministic unit tests
-docs/                Model selection and limitations
-.github/workflows/   CI and GitHub Pages deployment
-\`\`\`
+    gradle --no-daemon -p android testDebugUnitTest assembleDebug
+    adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+
+The Android workflow runs tests and creates a debug APK artifact. A workflow pass is not proof of physical-device compatibility or model accuracy.
+
+## Engineering principles
+
+- Process screen frames on-device and in memory.
+- Ask for explicit consent and keep an obvious stop control visible.
+- Never imply protection when inference fails, goes stale, or cannot capture a screen.
+- Benchmark compact quantized segmentation models on low-end devices before selecting one.
+- Review model weights, training-data provenance, and licenses before shipping.
+- Never classify gender; mask human figures without demographic inference.
+- Do not bypass Android secure-window or DRM restrictions.
 
 ## License
 
-The code in this repository is MIT-licensed. Third-party models and libraries have separate licenses.
+Repository code is MIT-licensed. Third-party models, runtimes, and dependencies have their own licenses.
