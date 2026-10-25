@@ -44,6 +44,7 @@ class ScreenCaptureService : Service() {
     private val inferenceBusy = AtomicBoolean(false)
 
     @Volatile private var projectionStopped = false
+    @Volatile private var stopping = false
     @Volatile private var lastSuccessfulFrameMs = 0L
     @Volatile private var lastFrameAcceptedMs = 0L
     @Volatile private var terminalError = false
@@ -137,6 +138,11 @@ class ScreenCaptureService : Service() {
         height: Int,
         densityDpi: Int,
     ) {
+        stopping = false
+        terminalError = false
+        inferenceBusy.set(false)
+        lastFrameAcceptedMs = 0L
+        lastSuccessfulFrameMs = SystemClock.elapsedRealtime()
         require(width > 0 && height > 0) { "Invalid capture dimensions." }
 
         overlayController = OverlayController(applicationContext) { stopSelf() }
@@ -184,6 +190,7 @@ class ScreenCaptureService : Service() {
     }
 
     private fun onFrameAvailable(reader: ImageReader) {
+        if (stopping) return
         val image = try {
             reader.acquireLatestImage()
         } catch (_: IllegalStateException) {
@@ -191,7 +198,8 @@ class ScreenCaptureService : Service() {
         } ?: return
 
         val now = SystemClock.elapsedRealtime()
-        if (now - lastFrameAcceptedMs < MIN_FRAME_INTERVAL_MS ||
+        if (stopping ||
+            now - lastFrameAcceptedMs < MIN_FRAME_INTERVAL_MS ||
             !inferenceBusy.compareAndSet(false, true)
         ) {
             image.close()
@@ -203,10 +211,17 @@ class ScreenCaptureService : Service() {
             imageToBitmap(image)
         } catch (_: Exception) {
             inferenceBusy.set(false)
-            failClosed("تعذر قراءة إطار الشاشة؛ غُطّيت الشاشة احتياطياً.")
+            if (!stopping) failClosed("تعذر قراءة إطار الشاشة؛ غُطّيت الشاشة احتياطياً.")
             return
         } finally {
             image.close()
+        }
+
+        if (stopping) {
+            frame.recycle()
+            inferenceBusy.set(false)
+            closeSegmenterIfSafe()
+            return
         }
 
         if (isNearUniformBlack(frame)) {
@@ -222,53 +237,83 @@ class ScreenCaptureService : Service() {
             val currentSegmenter = segmenter
                 ?: throw IllegalStateException("The segmentation engine is unavailable.")
             currentSegmenter.process(input)
-                .addOnCompleteListener(inferenceExecutor!!) { task ->
-                    try {
-                        if (!task.isSuccessful) {
-                            failClosed("فشل تحليل الإطار؛ غُطّيت الشاشة حتى عودة المعالجة.")
-                            return@addOnCompleteListener
-                        }
-                        val mask = task.result
-                            ?: throw IllegalStateException("The segmentation mask was empty.")
-                        val values = copyConfidence(mask)
-                        val rendered = PrivacyRenderer.render(
-                            source = frame,
-                            confidence = values,
-                            maskWidth = mask.width,
-                            maskHeight = mask.height,
-                            blurRadius = FilterSettings.blurRadius,
-                        )
-                        val latency = (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(0L)
-                        lastSuccessfulFrameMs = SystemClock.elapsedRealtime()
-
-                        val previous = SessionStatus.current()
-                        val detected = rendered.coveragePercent > MIN_PERSON_COVERAGE_PERCENT
-                        val next = previous.copy(
-                            phase = if (detected) SatrPhase.FILTERING else SatrPhase.NO_PERSON_DETECTED,
-                            detail = if (detected) {
-                                "تمويه تجريبي مطبّق على المنطقة التي رصدها النموذج."
-                            } else {
-                                "لم يرصد النموذج شخصاً بوضوح؛ قد يفوّت أشخاصاً صغيرين أو بعيدين."
-                            },
-                            processedFrames = previous.processedFrames + 1,
-                            lastInferenceMs = latency,
-                            maskCoveragePercent = rendered.coveragePercent,
-                            modelReady = true,
-                        )
-                        overlayController?.updateFilterFrame(rendered.overlay)
-                        overlayController?.updateSession(next)
-                        SessionStatus.publish(next)
-                    } catch (_: Exception) {
-                        failClosed("تعذر إنشاء قناع التمويه؛ غُطّيت الشاشة احتياطياً.")
-                    } finally {
+                .addOnCompleteListener { task ->
+                    if (stopping) {
                         if (!frame.isRecycled) frame.recycle()
                         inferenceBusy.set(false)
+                        closeSegmenterIfSafe()
+                        return@addOnCompleteListener
+                    }
+
+                    val worker = inferenceExecutor
+                    if (worker == null) {
+                        if (!frame.isRecycled) frame.recycle()
+                        inferenceBusy.set(false)
+                        closeSegmenterIfSafe()
+                        return@addOnCompleteListener
+                    }
+
+                    try {
+                        worker.execute {
+                            try {
+                                if (stopping) return@execute
+                                if (!task.isSuccessful) {
+                                    failClosed("فشل تحليل الإطار؛ غُطّيت الشاشة حتى عودة المعالجة.")
+                                    return@execute
+                                }
+                                val mask = task.result
+                                    ?: throw IllegalStateException("The segmentation mask was empty.")
+                                val values = copyConfidence(mask)
+                                val rendered = PrivacyRenderer.render(
+                                    source = frame,
+                                    confidence = values,
+                                    maskWidth = mask.width,
+                                    maskHeight = mask.height,
+                                    blurRadius = FilterSettings.blurRadius,
+                                )
+                                if (stopping) {
+                                    if (!rendered.overlay.isRecycled) rendered.overlay.recycle()
+                                    return@execute
+                                }
+
+                                lastSuccessfulFrameMs = SystemClock.elapsedRealtime()
+                                val previous = SessionStatus.current()
+                                val detected = rendered.coveragePercent > MIN_PERSON_COVERAGE_PERCENT
+                                val next = previous.copy(
+                                    phase = if (detected) SatrPhase.FILTERING else SatrPhase.NO_PERSON_DETECTED,
+                                    detail = if (detected) {
+                                        "تمويه تجريبي مطبّق على المنطقة التي رصدها النموذج."
+                                    } else {
+                                        "لم يرصد النموذج شخصاً بوضوح؛ قد يفوّت أشخاصاً صغيرين أو بعيدين."
+                                    },
+                                    processedFrames = previous.processedFrames + 1,
+                                    lastInferenceMs = (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(0L),
+                                    maskCoveragePercent = rendered.coveragePercent,
+                                    modelReady = true,
+                                )
+                                overlayController?.updateFilterFrame(rendered.overlay)
+                                overlayController?.updateSession(next)
+                                SessionStatus.publish(next)
+                            } catch (_: Exception) {
+                                if (!stopping) {
+                                    failClosed("تعذر إنشاء قناع التمويه؛ غُطّيت الشاشة احتياطياً.")
+                                }
+                            } finally {
+                                if (!frame.isRecycled) frame.recycle()
+                                inferenceBusy.set(false)
+                                if (stopping) closeSegmenterIfSafe()
+                            }
+                        }
+                    } catch (_: java.util.concurrent.RejectedExecutionException) {
+                        if (!frame.isRecycled) frame.recycle()
+                        inferenceBusy.set(false)
+                        closeSegmenterIfSafe()
                     }
                 }
         } catch (_: Exception) {
             if (!frame.isRecycled) frame.recycle()
             inferenceBusy.set(false)
-            failClosed("تعذر تشغيل النموذج؛ غُطّيت الشاشة احتياطياً.")
+            if (!stopping) failClosed("تعذر تشغيل النموذج؛ غُطّيت الشاشة احتياطياً.")
         }
     }
 
@@ -429,7 +474,15 @@ class ScreenCaptureService : Service() {
         }
     }
 
+    private fun closeSegmenterIfSafe() {
+        val current = synchronized(this) {
+            if (inferenceBusy.get()) null else segmenter.also { segmenter = null }
+        } ?: return
+        runCatching { current.close() }
+    }
+
     private fun cleanup() {
+        stopping = true
         captureHandler?.removeCallbacks(staleFrameWatchdog)
         imageReader?.setOnImageAvailableListener(null, null)
         overlayController?.remove()
@@ -453,15 +506,10 @@ class ScreenCaptureService : Service() {
         captureThread?.quitSafely()
         captureThread = null
 
-        inferenceExecutor?.shutdownNow()
+        val currentExecutor = inferenceExecutor
         inferenceExecutor = null
-        try {
-            segmenter?.close()
-        } catch (_: Exception) {
-            // Teardown must continue even if the model runtime is already closed.
-        } finally {
-            segmenter = null
-        }
+        currentExecutor?.shutdown()
+        closeSegmenterIfSafe()
 
         if (currentProjection != null && !projectionStopped) {
             try {
