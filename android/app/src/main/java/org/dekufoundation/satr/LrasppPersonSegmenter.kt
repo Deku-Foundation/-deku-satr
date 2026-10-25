@@ -27,7 +27,9 @@ data class PersonSegmentationMask(
 )
 
 class LrasppPersonSegmenter(context: Context) : AutoCloseable {
-    private val interpreter: Interpreter
+    private lateinit var interpreter: Interpreter
+    private lateinit var modelFile: File
+    private var usingNnapi = false
     private val inputShape: IntArray
     private val outputShape: IntArray
     private val inputNchw: Boolean
@@ -39,7 +41,7 @@ class LrasppPersonSegmenter(context: Context) : AutoCloseable {
     private val outputClasses: Int
 
     init {
-        val modelFile = File(context.cacheDir, MODEL_FILE)
+        modelFile = File(context.cacheDir, MODEL_FILE)
         if (!modelFile.isFile || sha256(modelFile) != MODEL_SHA256) {
             context.assets.open(MODEL_FILE).use { input ->
                 FileOutputStream(modelFile).use { output -> input.copyTo(output) }
@@ -48,11 +50,13 @@ class LrasppPersonSegmenter(context: Context) : AutoCloseable {
         check(modelFile.isFile && sha256(modelFile) == MODEL_SHA256) {
             "The bundled LR-ASPP model failed its SHA-256 check."
         }
-        interpreter = Interpreter(
-            modelFile,
-            Interpreter.Options().setNumThreads(3).setUseNNAPI(true),
-        )
-        interpreter.allocateTensors()
+        val accelerated = runCatching { createInterpreter(useNnapi = true) }
+        if (accelerated.isSuccess) {
+            interpreter = accelerated.getOrThrow()
+            usingNnapi = true
+        } else {
+            interpreter = createInterpreter(useNnapi = false)
+        }
         require(interpreter.getInputTensor(0).dataType() == org.tensorflow.lite.DataType.FLOAT32) {
             "The LR-ASPP input tensor must be float32."
         }
@@ -136,7 +140,25 @@ class LrasppPersonSegmenter(context: Context) : AutoCloseable {
 
         val output = ByteBuffer.allocateDirect(outputCount.toInt() * Float.SIZE_BYTES)
             .order(ByteOrder.nativeOrder())
-        interpreter.run(input, output)
+        try {
+            interpreter.run(input, output)
+        } catch (error: Exception) {
+            if (!usingNnapi) throw error
+            val expectedInputShape = inputShape
+            val expectedOutputShape = outputShape
+            runCatching { interpreter.close() }
+            interpreter = createInterpreter(useNnapi = false)
+            usingNnapi = false
+            require(interpreter.getInputTensor(0).shape().contentEquals(expectedInputShape)) {
+                "CPU fallback input tensor does not match the accelerated model."
+            }
+            require(interpreter.getOutputTensor(0).shape().contentEquals(expectedOutputShape)) {
+                "CPU fallback output tensor does not match the accelerated model."
+            }
+            input.rewind()
+            output.clear()
+            interpreter.run(input, output)
+        }
         output.rewind()
         val logits = output.asFloatBuffer()
         val cropLeft = (left.toFloat() * outputWidth / inputWidth).roundToInt().coerceIn(0, outputWidth - 1)
@@ -170,6 +192,12 @@ class LrasppPersonSegmenter(context: Context) : AutoCloseable {
         }
         pixels.fill(0)
         return PersonSegmentationMask(cropWidth, cropHeight, confidence)
+    }
+
+    private fun createInterpreter(useNnapi: Boolean): Interpreter {
+        val options = Interpreter.Options().setNumThreads(3)
+        if (useNnapi) options.setUseNNAPI(true)
+        return Interpreter(modelFile, options).also { it.allocateTensors() }
     }
 
     private fun outputIndex(classIndex: Int, x: Int, y: Int): Int =
