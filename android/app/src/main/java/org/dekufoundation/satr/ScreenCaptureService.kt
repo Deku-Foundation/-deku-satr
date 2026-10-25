@@ -48,8 +48,14 @@ class ScreenCaptureService : Service() {
         }
         if (projection != null) return START_NOT_STICKY
 
-        val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, 0) ?: 0
-        val resultData = readProjectionIntent(intent)
+        val command = intent
+        if (command == null) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        val resultCode = command.getIntExtra(EXTRA_RESULT_CODE, 0)
+        val resultData = readProjectionIntent(command)
         if (resultCode != Activity.RESULT_OK || resultData == null) {
             stopSelf()
             return START_NOT_STICKY
@@ -62,9 +68,9 @@ class ScreenCaptureService : Service() {
             startCaptureSession(
                 resultCode = resultCode,
                 resultData = resultData,
-                width = intent.getIntExtra(EXTRA_CAPTURE_WIDTH, 0),
-                height = intent.getIntExtra(EXTRA_CAPTURE_HEIGHT, 0),
-                densityDpi = intent.getIntExtra(EXTRA_DENSITY_DPI, resources.displayMetrics.densityDpi),
+                width = command.getIntExtra(EXTRA_CAPTURE_WIDTH, 0),
+                height = command.getIntExtra(EXTRA_CAPTURE_HEIGHT, 0),
+                densityDpi = command.getIntExtra(EXTRA_DENSITY_DPI, resources.displayMetrics.densityDpi),
             )
             START_NOT_STICKY
         } catch (_: Exception) {
