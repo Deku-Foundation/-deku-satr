@@ -108,3 +108,23 @@ This release improves temporal stability and effect selection; it does **not** c
 The current model is still a portrait-oriented person segmenter and cannot infer a person's gender reliably. We have not integrated LR-ASPP/MobileNetV3 or MediaPipe's multi-class model because their end-to-end screen-capture behavior, model artifact provenance/licence, preprocessing/output contract, and low-end-device performance have not yet been validated in this repository. The MediaPipe multiclass model is substantially slower on CPU in Google's published Pixel 6 benchmark, so it is not an automatic upgrade for low-power phones. No 99% accuracy or complete-coverage claim is justified.
 
 The next model comparison must use the same labelled screen/video-frame set and report person recall (including small/distant/occluded subjects), boundary leakage, p50/p95 latency, sustained throughput, peak RAM, thermal behavior, battery draw, and distribution size. Gender-selective filtering is not part of this model contract; the safe default remains all-person segmentation or explicit manual regions.
+
+
+## Native runtime and media workflow update (2026-10-25)
+
+The APK keeps ML Kit Selfie Segmentation in `STREAM_MODE` for live display frames. Google documents temporal smoothing for stream mode, about 4.5 MB added APK size, and 25–65 ms reference latency on Pixel 4 depending on input size. These are vendor references, not benchmarks of this app.
+
+Added capture profiles:
+- Power saver: 480 px long edge, 200 ms minimum inference interval.
+- Balanced: 640 px, 140 ms.
+- Detail: 720 px, 100 ms.
+
+These expose workload trade-offs, not guaranteed accuracy or fixed FPS. Frames are still dropped while inference is busy. Higher resolution can help small subjects but increases processing cost, heat, and memory. The selected capture size applies on the next session; the interval is read dynamically.
+
+Still-image editing uses the same bundled segmenter in single-image mode, downsamples the selected file before inference, composites the effect in memory, and exports only through Android's document picker. The original is not overwritten, and images are not uploaded. Mask coverage is diagnostic, not proof every person was detected.
+
+The model does **not** infer gender. Hair length, hairstyle, clothing and appearance are unreliable proxies; the privacy default remains to mask all confidently detected people. Per-person targeting should use explicit user selection or validated instance masks, not inferred gender.
+
+Official references:
+- https://developers.google.com/ml-kit/vision/selfie-segmentation/android
+- https://developers.google.com/edge/mediapipe/solutions/vision/image_segmenter
