@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.vite/
+coverage/
+.DS_Store
+*.log
+
+# Android / Gradle
+android/.gradle/
+android/local.properties
+android/build/
+android/app/build/
+**/build/
+
+# Signing material must never enter Git
+*.jks
+*.keystore
