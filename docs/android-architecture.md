@@ -1,82 +1,54 @@
 # Native Android architecture
 
-Updated: 2026-10-25. This is an implementation note for the Android foundation, not evidence of production masking.
+Updated: 2026-10-25. The project now contains an embedded model and a full-screen mask renderer; Android/OEM behavior remains unvalidated outside GitHub-hosted build tests.
 
-## What is implemented on this branch
+## Implemented on this branch
 
-- A native Kotlin Android app (`android/`), with `minSdk 26`, `compileSdk/targetSdk 36`, JDK 17, and Gradle 8.13.
-- Explicit user permission flow for overlay access and every MediaProjection session.
-- A `mediaProjection` foreground service and persistent notification with an immediate stop action.
-- A small `TYPE_APPLICATION_OVERLAY` status panel with its own stop button.
-- A downscaled capture surface (long edge at most 960 px) and a bounded `ImageReader`.
-- Unit tests for the capture-size policy and a GitHub Actions job that tests and packages a debug APK.
+- Kotlin Android app: min SDK 26, compile/target SDK 36, JDK 17, Gradle 8.13.
+- Arabic-first responsive Material 3 1.4.0 UI, system light/dark themes, permission state, inference counters, latest inference time, mask coverage, and a blur-strength control.
+- Explicit user permission for overlay access and fresh MediaProjection consent for each capture session.
+- A mediaProjection foreground service with persistent notification and immediate stop action.
+- A touch-pass-through transparent full-screen filter overlay and a separate draggable status/stop panel.
+- ML Kit Selfie Segmentation 16.0.0-beta6, bundled at build time; no runtime model download.
+- Frames capped at a longest edge of 640 pixels, a two-image ImageReader, a 250 ms inference throttle, and a single in-flight inference task.
+- A CPU two-pass box blur clipped to a thresholded/dilated person mask. Failed inference triggers an opaque fail-closed overlay while the user-accessible stop panel remains visible.
+- Unit tests for capture scaling, mask thresholding, dilation, and coverage. Android CI builds a debug APK and checks that the merged manifest does not include INTERNET permission.
 
-The current frame listener acquires and closes frames without reading pixel planes. There is **no person detector and no blur output yet**. This is deliberate; the app labels itself as not protecting the screen.
+## Model choice
 
-## Intended pipeline
-
-1. The user opens Satr and grants overlay access from Android Settings.
-2. The user taps Start and approves the system MediaProjection prompt for that session.
-3. A foreground service starts, displays a persistent notification, and establishes a downscaled virtual display.
-4. A future `PersonMaskEngine` consumes selected in-memory frames. It must report mask confidence, latency, and failure reasons.
-5. A renderer may apply blur only after the screen-capture/overlay composition loop has been proven on target devices. The app must never show a “protected” state merely because a frame was captured.
-6. Stop, revoked projection, service failure, screen lock, or app shutdown must release the display, reader, worker thread, and overlay.
-
-## Model candidates
-
-### ML Kit Selfie Segmentation — benchmark candidate only
-
-Google documents an Android beta API, an app-size increase of about 4.5 MB, streaming mode, and raw-size masks. Its guide reports latency of roughly 25–65 ms on a Pixel 4 depending on input size. It can support multiple people, but selfie/person segmentation is not proof that tiny or distant people embedded in arbitrary app screenshots will be found. Benchmark it with our own screen-capture test set before integrating it.
+ML Kit Selfie Segmentation is the first embedded baseline because it is bundled and optimized for person masks, supports stream mode, and has an output-mask API. Google's docs say the bundled dependency adds approximately 4.5 MB and publish 25–65 ms latency for Pixel 4, depending on image size. Those numbers are reference results, not a promise for Satr or lower-end phones.
 
 Source: https://developers.google.com/ml-kit/vision/selfie-segmentation/android
 
-### LiteRT CompiledModel — likely runtime direction
+The API is beta, and the underlying model is optimized for person/selfie imagery. It may miss people that are small, distant, occluded, stylized, or part of unusual application content. The intent is to mask people, not classify gender.
 
-Google's current LiteRT 2.x docs recommend the `CompiledModel` API for new high-performance on-device inference, with hardware-specific acceleration where available. Any selected model still needs a compatible input/output adapter and a reliable CPU path; the runtime alone does not make a model small or accurate.
+## Pipeline and constraints
 
-Sources:
-- https://developers.google.com/edge/litert/overview
-- https://developers.google.com/edge/litert/android
+1. The user explicitly grants overlay access and approves MediaProjection through the Android system prompt.
+2. The visible foreground service starts, displays a stop notification, and creates a downscaled virtual display.
+3. The ImageReader callback drops frames when another inference is active or the throttle interval has not elapsed.
+4. A captured frame is converted to an in-memory bitmap and passed to the bundled segmenter in stream mode.
+5. The confidence map is thresholded and dilated. A CPU blur is generated and only masked pixels are drawn through a transparent full-screen overlay.
+6. An exception or stale inference causes a solid fail-closed overlay and warning rather than leaving the last successful mask on-screen indefinitely.
+7. Stop, MediaProjection revocation, and service teardown release the model, worker thread, display, reader, and overlays.
 
-### Model shape
+## Highest-risk open item: overlay feedback
 
-Evaluate a compact semantic `person` segmenter before instance segmentation. A single union mask is enough for the first blur effect and usually cheaper than keeping a separate instance mask per person. Quantized INT8 and reduced input resolution are candidates, not assumed wins: compare person recall, edge leakage, false-positive area, p95 latency, memory, device temperature, energy, and APK/model size on the same devices.
+MediaProjection operates on screen content, while Satr draws a separate window above it. The current implementation does **not** prove that the filter overlay is excluded from later captured frames. If the previous blurred mask enters the next frame, segmentation can become temporally unstable, create trails, or miss the original boundary. This must be characterized on physical devices before calling the filter reliable.
 
-Do not ship the existing browser prototype's SegFormer weights in Android by default. The license of the upstream model artifact still needs review and the browser baseline is not an established low-end mobile model.
+The acceptance gate is tracked at https://github.com/Deku-Foundation/deku-satr/issues/2. It includes:
+- Whether frames stay usable while the overlay is shown.
+- Whether the overlay is recursively captured and how visible feedback behaves.
+- Touch pass-through, drag/stop panel, orientation/display changes, and overlay revocation.
+- Permission revocation, lock/unlock, secure windows, DRM playback, and resource cleanup.
+- Memory, thermal, battery, p50/p95 inference time, and mask quality on low-end phones.
 
-## Hard engineering gate: overlay feedback
-
-A normal app cannot replace another app's compositor pixels. This design can only place a separate overlay above them. Therefore, before implementing blur patches, test whether MediaProjection captures Satr's own overlay on every target Android/device combination. If the overlay enters the next inference frame, repeated blur can feed back into the mask and produce ghosting or unstable output.
-
-The prototype must prove:
-- the capture source remains usable while the status overlay is visible;
-- the overlay is not recursively processed, or a tested composition strategy avoids feedback;
-- taps still reach the underlying app outside the controls;
-- rotations, display resizing, permission revocation, secure windows, DRM playback, and lock/unlock fail visibly and release resources.
-
-If any of these conditions is not achievable on a device, show “not protected” and document the limitation. Do not advertise universal support for every app.
-
-## Android platform constraints
-
-- Android 14+ requires a fresh user approval for each MediaProjection capture session, and a projection instance can create only one virtual display.
-- Android 14+ requires the `FOREGROUND_SERVICE_MEDIA_PROJECTION` permission and matching service type.
-- Android 15+ prevents starting a media-projection foreground service from `BOOT_COMPLETED`; Satr must not silently start screen capture after reboot.
-- `TYPE_APPLICATION_OVERLAY` requires special user-granted overlay access and can be repositioned or hidden by the system.
-- Secure/DRM content can be blacked out or unavailable to capture. Satr must not claim such content is protected.
-
-Sources:
-- https://developer.android.com/media/grow/media-projection
-- https://developer.android.com/about/versions/14/behavior-changes-14
-- https://developer.android.com/about/versions/15/behavior-changes-15
-- https://developer.android.com/reference/android/view/WindowManager.LayoutParams
+If a device cannot reliably capture or composite the overlay, the UI must clearly show the limitation. Do not bypass secure capture restrictions.
 
 ## Build locally
 
-Install JDK 17, Android SDK Platform 36, and Gradle 8.13; accept the Android SDK licenses first.
+Install JDK 17, Gradle 8.13, Android SDK Platform 36 and accept the SDK licenses:
 
-```sh
-gradle --no-daemon -p android testDebugUnitTest assembleDebug
-adb install -r android/app/build/outputs/apk/debug/app-debug.apk
-```
+    gradle --no-daemon -p android testDebugUnitTest assembleDebug
 
-GitHub Actions runs the same tests and build and uploads `app-debug.apk` as a workflow artifact. The APK is a development build and is not signed for production distribution.
+GitHub Actions uploads android/app/build/outputs/apk/debug/app-debug.apk as a development artifact; it is not production-signed.
