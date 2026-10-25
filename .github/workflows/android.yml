@@ -1,0 +1,74 @@
+name: Android build and tests
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - "android/**"
+      - ".github/workflows/android.yml"
+  pull_request:
+    paths:
+      - "android/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deku-satr-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android SDK packages
+        run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.5.0"
+          cache-provider: basic
+
+      - name: Unit tests and debug APK
+        run: gradle --no-daemon -p android testDebugUnitTest assembleDebug
+
+      - name: Audit merged manifest for network permission
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest="$(find android/app/build/intermediates/merged_manifest android/app/build/intermediates/merged_manifests -name AndroidManifest.xml -print -quit 2>/dev/null || true)"
+          if [[ -z "$manifest" ]]; then
+            echo "Could not locate the merged debug manifest."
+            find android/app/build/intermediates -maxdepth 6 -iname '*manifest*' -print
+            exit 1
+          fi
+          if grep -q 'android.permission.INTERNET' "$manifest"; then
+            echo "Unexpected INTERNET permission in merged app manifest: $manifest"
+            cat "$manifest"
+            exit 1
+          fi
+          echo "Merged manifest has no INTERNET permission: $manifest"
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: deku-satr-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
