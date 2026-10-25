@@ -13,7 +13,6 @@ import java.nio.ByteOrder
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
