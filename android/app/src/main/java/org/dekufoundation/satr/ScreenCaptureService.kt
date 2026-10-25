@@ -392,11 +392,16 @@ class ScreenCaptureService : Service() {
                                         freshValues
                                     } else {
                                         val cached = lastGoodConfidence
-                                        if (cached != null &&
-                                            lastGoodMaskWidth == mask.width &&
-                                            lastGoodMaskHeight == mask.height &&
-                                            frameNow - lastGoodMaskAtMs <= MASK_HOLD_MS
-                                        ) cached.copyOf() else freshValues
+                                        val reusePrevious = MaskHoldPolicy.shouldReusePreviousMask(
+                                            freshCoveragePercent = freshCoverage,
+                                            minimumCoveragePercent = MIN_PERSON_COVERAGE_PERCENT,
+                                            previousMaskAvailable = cached != null,
+                                            dimensionsMatch = lastGoodMaskWidth == mask.width &&
+                                                lastGoodMaskHeight == mask.height,
+                                            ageMs = frameNow - lastGoodMaskAtMs,
+                                            maximumAgeMs = MASK_HOLD_MS,
+                                        )
+                                        if (reusePrevious) cached!!.copyOf() else freshValues
                                     }
                                 }
                                 val rendered = PrivacyRenderer.render(
