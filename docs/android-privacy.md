@@ -2,29 +2,33 @@
 
 ## Current implementation
 
-The Android module declares only these permissions:
+The Android manifest explicitly declares:
 
-- `SYSTEM_ALERT_WINDOW` — the user-visible floating control.
-- `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_MEDIA_PROJECTION` — the visible capture session.
-- `POST_NOTIFICATIONS` — so the user can see that capture is running and stop it.
+- SYSTEM_ALERT_WINDOW — user-visible floating control and filter layer.
+- FOREGROUND_SERVICE and FOREGROUND_SERVICE_MEDIA_PROJECTION — visible capture session.
+- POST_NOTIFICATIONS — visible session indicator and stop affordance where required.
 
-It does **not** request camera, microphone, contacts, location, storage, or network access. It has no internet permission or application server.
+The manifest merger is instructed to remove android.permission.INTERNET; CI checks the merged debug manifest. The app does not request camera, microphone, contacts, location, or storage permissions.
 
-After the user approves MediaProjection, Android writes the displayed content to an `ImageReader` surface. The current service only acquires each available `Image`, closes it, and periodically counts samples. It does not access the pixel planes, save screenshot files, upload frames, or run an AI model. The overlay and notification both say that AI blur is inactive.
+The native app includes ML Kit Selfie Segmentation 16.0.0-beta6 at build time. The model is bundled into the installed app rather than downloaded during a session. Google reports an approximate 4.5 MB app-size increase for this bundled API. The API is beta and its suitability for arbitrary screen screenshots has not been established.
 
-## Required before inference ships
+After the user grants MediaProjection, screen frames are received through an ImageReader. They are downscaled to a 640 px longest edge, held in memory, passed through the local segmenter, and rendered as a blurred mask. The code does not intentionally save frames/masks to storage, log pixel values, or upload media. Blur intermediates and confidence masks exist in app memory while processing.
 
-- Keep captured frames and masks in memory only; do not log pixels or dump bitmaps.
-- Do not add `INTERNET` permission for runtime model downloading without a separate design review. Prefer a reviewed model bundled with the release or a clearly explained optional download.
-- Keep only one bounded latest frame; drop stale frames rather than queueing a backlog.
-- Stop capture and close resources immediately on system revocation, user stop, or unrecoverable processing failure.
-- Exclude private content from crash reports and diagnostics. Do not attach screenshots to crash reports.
-- Keep the status overlay and notification visible whenever capture is active.
+## Required before release
+
+- Verify the merged manifest and final APK with the Android CI permission audit and a manual APK audit.
+- Keep captured frames and masks in memory only; never log pixels or write screenshots to disk.
+- Keep only one inference in flight, drop stale frames, and avoid unbounded frame queues.
+- Preserve the persistent notification and floating stop action while capture is active.
+- Fail closed with an obvious warning on inference errors or stale results; never show a guaranteed-protection claim.
+- Test the overlay composition loop on real devices before relying on a screen-wide mask.
+- Exclude screenshot content from crash reports and diagnostics.
 - Never use Accessibility APIs to read other apps' UI or bypass secure capture restrictions.
-- Never classify a person's gender. The task is to mask visible human figures, without demographic inference.
+- Do not add analytics, remote model download, or any network permission without a separate security review.
+- Never infer or display a person's gender; the model is used only for a person mask.
 
 ## Known limitations
 
-MediaProjection requires explicit user consent for each capture session; it is not an invisible, always-on system hook. The user can stop sharing through Android's system controls. Some apps, `FLAG_SECURE` windows, DRM video, and secure surfaces may not be capturable. Overlay behavior and composition vary by OS version and manufacturer and require physical-device testing.
+MediaProjection requires explicit user consent for each session and can be stopped by Android. FLAG_SECURE windows, DRM video, and other protected surfaces may be blacked out or unavailable to capture. The current model can miss people, particularly small or distant people in screenshots. The filter overlay may appear in subsequent projection frames depending on Android version and device vendor; temporal feedback still requires physical testing.
 
-This build is a capture/overlay proof of concept only. It is not yet a blur tool and must not be used as if it protects content.
+This is an experimental local filter, not a guaranteed safety barrier.
