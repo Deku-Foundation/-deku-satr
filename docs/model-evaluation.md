@@ -154,3 +154,25 @@ Sources:
 - https://huggingface.co/EdgeFirst/yolo26-seg/tree/main/tflite
 
 Until a compatible instance-segmentation model is selected and validated, the shipped behavior stays “mask all detected people.” The correct next design for selective targeting is instance masks plus explicit user selection or user-defined labels, with temporal tracking between frames. Do not automatically infer gender from appearance. The model must be benchmarked on screen captures including distant people, long-haired men, short-haired women, occlusion, motion, and varied display scaling before enabling selective policies.
+
+
+## Aspect-aware multi-crop inference (2026-10-25)
+
+The active LR-ASPP engine now optionally splits very tall or wide frames into overlapping near-square crops before inference. A fixed square input otherwise letterboxes a portrait display heavily (for example, a 360×720 frame maps its full content to roughly 260×520 pixels when the model input is square). Overlapping crops let the model see a larger subject scale and reduce the chance that people near a tile boundary are missed. The merged confidence map takes the maximum confidence in overlapping areas.
+
+- Power Saver: tiling disabled to bound compute.
+- Balanced: tiling enabled, 180 ms minimum frame interval.
+- Detail: tiling enabled, 140 ms minimum frame interval.
+
+Tiling may require two or more model runs per captured frame, so it can reduce the achieved frame rate and increase heat on slower devices. These are workload settings, not accuracy guarantees. Unit tests cover tile geometry; real-device latency, missed-person rate and boundary quality still need measurement.
+
+### Instance-segmentation candidate and licensing
+
+YOLO11n-seg is a stronger task fit for selecting individual people because it returns instance masks. Upstream documentation reports 32.0 mask mAP on COCO for YOLO11n-seg at 640px and 2.9M parameters; this is a published benchmark, not a Satr benchmark. The available EdgeFirst int8 TFLite artifact is about 3.23 MB but is marked AGPL-3.0. Satr's repository is MIT-licensed, so this artifact must not be bundled as if it were license-compatible without an explicit licensing decision. The STMicroelectronics conversion lists a separate SLA0044 license, so it is not an automatic substitute either.
+
+Current decision: retain the small LR-ASPP model for now, add aspect-aware tiled inference, and keep the instance-segmentation model as a gated candidate until a compatible model artifact, preprocessing/output contract, and on-device benchmark are verified. Do not infer gender from appearance; per-person selection requires instance masks and explicit user selection/tracking.
+
+Sources:
+- https://github.com/ultralytics/ultralytics/blob/main/docs/en/models/yolo11.md
+- https://huggingface.co/EdgeFirst/yolo11-seg/tree/main/tflite
+- https://huggingface.co/STMicroelectronics/yolov11n_seg
