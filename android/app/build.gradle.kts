@@ -1,7 +1,7 @@
 plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.compose")
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
 }
 
 android {
@@ -12,15 +12,16 @@ android {
         applicationId = "org.dekufoundation.satr"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.3.0"
-
-        testInstrumentationRunner = "android.test.runner.AndroidJUnitRunner"
+        versionCode = 4
+        versionName = "0.4.0"
+        testInstrumentationRunner = "android.test.InstrumentationTestRunner"
     }
 
     buildTypes {
         release {
+            // Keep shrinking off until a signed release build is independently verified.
             isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -28,18 +29,14 @@ android {
         }
     }
 
-    buildFeatures {
-        compose = true
-    }
+    buildFeatures { compose = true }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    testOptions {
-        unitTests.isReturnDefaultValues = true
-    }
+    testOptions { unitTests.isReturnDefaultValues = true }
 }
 
 kotlin {
@@ -49,14 +46,11 @@ kotlin {
 }
 
 dependencies {
-    implementation("androidx.activity:activity-compose:1.13.0")
-    implementation("androidx.compose.foundation:foundation:1.11.4")
-    implementation("androidx.compose.material3:material3:1.4.0")
-    implementation("androidx.compose.ui:ui:1.11.4")
-    implementation("androidx.compose.ui:ui-tooling-preview:1.11.4")
-
-    // Bundled at build time; no runtime model download is required.
-    implementation("com.google.mlkit:segmentation-selfie:16.0.0-beta6")
-
-    testImplementation("junit:junit:4.13.2")
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.compose.foundation)
+    implementation(libs.compose.material3)
+    implementation(libs.compose.ui)
+    implementation(libs.compose.ui.tooling.preview)
+    implementation(libs.mlkit.segmentation.selfie)
+    testImplementation(libs.junit)
 }

@@ -75,3 +75,19 @@ Official platform references:
 - https://developer.android.com/about/versions/14/behavior-changes-14
 - https://developer.android.com/about/versions/15/behavior-changes-15
 - https://developer.android.com/reference/android/view/WindowManager.LayoutParams
+
+
+## Candidate for multi-person screenshots: LR-ASPP + MobileNetV3-Large
+
+LiteRT Community provides a TorchVision LR-ASPP + MobileNetV3-Large conversion: the FP32 TFLite artifact is listed at 12.9 MB, with a dynamic-weight-INT8 / FP32-activation artifact listed around 3.52 MB. TorchVision reports about 3.22M parameters for the architecture, trained using a COCO subset restricted to VOC categories including person.
+
+Sources:
+- https://huggingface.co/litert-community/lraspp_mobilenet_v3_large
+- https://huggingface.co/litert-community/lraspp_mobilenet_v3_large/blob/main/lraspp_mobilenet_v3_large.tflite
+- https://github.com/pytorch/vision/blob/main/torchvision/models/segmentation/lraspp.py
+
+This is a promising general semantic person-mask candidate, but it is NOT integrated or benchmarked in Satr. The converted model card lacks sufficient deployment details for preprocessing, tensor shapes/layout, person class index, and exact binary/license provenance. We will not ship it until its immutable revision/hash and license are verified, the tensor contract and normalization are confirmed, and CPU execution is validated.
+
+Compare it with ML Kit on the same labelled screen sample set including multiple people, short/long hair, covered heads, different clothing/skin tones, dark screens, small/distant people, occlusion, motion, animation and rotation. Report person recall/miss rate, mask leakage, false-positive area, p50/p95 latency, peak RAM, sustained FPS, temperature, battery and APK size. Published timings on different devices are not directly comparable.
+
+The Settings screen therefore defaults to all people. The current model produces a person/background mask, not a gender label; hair and clothing are not a dependable substitute for a separately validated classifier. Gender-selective blur remains unavailable until a candidate is tested and its error rates are documented.

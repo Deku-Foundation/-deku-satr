@@ -1,17 +1,17 @@
 # Native Android architecture
 
-Updated: 2026-10-25. This branch contains an embedded segmentation baseline and a full-screen mask renderer; Android/OEM behavior remains unvalidated outside GitHub-hosted build tests.
+Updated: 2026-10-25. Version 0.4.0 contains an embedded segmentation baseline, separate Home/Settings navigation, stored filter settings and a full-screen renderer. Android/OEM behavior remains unvalidated outside GitHub-hosted build tests.
 
 ## Implemented on this branch
 
-- Kotlin Android app: min SDK 26, compile/target SDK 36, JDK 17, AGP 8.13.2, Gradle 8.13.
-- Arabic-first responsive Material 3 1.4.0 UI, system light/dark themes, permission state, inference counters, latest inference time, mask coverage, and a blur-strength control.
+- Kotlin Android app: min SDK 26, compile/target SDK 36, JDK 17, AGP 9.3.0, Gradle 9.5.0.
+- Arabic-first Material 3 UI with Home/Settings destinations, adaptive maximum width, permission state, inference metrics, and locally persisted blur/sensitivity/mask expansion.
 - Compose UI/Foundation 1.11.4, the newest stable series compatible with the stable Android API 36 toolchain used here.
 - Explicit user permission for overlay access and fresh MediaProjection consent for each capture session.
 - A mediaProjection foreground service with persistent notification and immediate stop action.
 - A touch-pass-through transparent full-screen filter overlay and a separate draggable status/stop panel.
 - ML Kit Selfie Segmentation 16.0.0-beta6, bundled at build time; no runtime model download.
-- Frames capped at a longest edge of 640 pixels, a two-image ImageReader, a 250 ms inference throttle, and a single in-flight inference task.
+- Frames capped at a longest edge of 640 pixels, a two-image ImageReader, a 250 ms inference throttle, raw-size ML Kit masks, and one in-flight inference task.
 - A CPU two-pass box blur clipped to a thresholded/dilated person mask. Failed inference triggers an opaque fail-closed overlay while the user-accessible stop panel remains visible.
 - Unit tests for capture scaling, mask thresholding, dilation, and coverage. Android CI builds a debug APK and checks that the merged manifest does not include INTERNET permission.
 
@@ -58,7 +58,7 @@ If a device cannot reliably capture or composite the overlay, the UI must clearl
 
 ## Build locally
 
-Install JDK 17, Gradle 8.13, Android SDK Platform 36 and accept the SDK licenses:
+Install JDK 17, Gradle 9.5.0, Android SDK Platform 36 and accept the SDK licenses:
 
     gradle --no-daemon -p android testDebugUnitTest assembleDebug
 
@@ -97,3 +97,21 @@ Official guidance:
 - Material 3 release notes: https://developer.android.com/jetpack/androidx/releases/compose-material3
 
 The dashboard's width constraint is a deliberate first adaptive step, not a claim that the app already has a complete multi-pane tablet layout.
+
+
+## UX/performance changes in 0.4.0
+- Home contains only session status and Start/Stop. Filter controls and permission details moved to Settings.
+- Notification permission no longer blocks MediaProjection startup. Android still requires a foreground-service notification; its drawer visibility follows Android permission rules. The app/overlay Stop control remains available.
+- Compose metric updates and floating-panel metrics are rate-limited to 900 ms; phase/error changes stay immediate. The floating status panel no longer invalidates the full-screen mask surface a second time.
+- A five-point black-pixel heuristic was removed because dark app UI is legitimate. Actual capture errors and a longer stale-result watchdog remain.
+- The service uses ML Kit raw-size confidence masks, user-adjustable threshold/expansion, and multi-frame status hysteresis. This reduces redundant resizing and status oscillation, but does not prove overlay feedback is solved.
+
+## Build toolchain and catalog
+Android Gradle Plugin 9.3.0 pairs with Gradle 9.5.0 and JDK 17. Versions are centralized in android/gradle/libs.versions.toml. The project temporarily opts out of AGP's built-in Kotlin and new DSL while keeping the standalone Kotlin/Compose plugin path; remove these compatibility flags only after dedicated migration testing.
+
+Official sources:
+- https://developer.android.com/build/releases/agp-9-3-0-release-notes
+- https://developer.android.com/build/releases/about-agp
+- https://developer.android.com/build/migrate-to-built-in-kotlin
+- https://kotlinlang.org/docs/gradle-configure-project.html
+- https://developers.google.com/ml-kit/vision/selfie-segmentation/android

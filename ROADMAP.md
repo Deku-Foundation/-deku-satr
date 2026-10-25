@@ -16,7 +16,7 @@ A checked box means code or documentation has been added; it does not mean devic
 ## M1 — Model evaluation
 
 - [x] Integrate the bundled ML Kit Selfie Segmentation beta as the first small offline Android baseline.
-- [x] Use streaming mode and an output mask that is resized to the captured frame.
+- [x] Use stream mode with a raw-size confidence mask mapped to the reduced screen frame.
 - [x] Add confidence thresholding and mask dilation tests.
 - [ ] Benchmark the current model against real app screenshots with small, distant, occluded, and moving people.
 - [ ] Compare a compact LiteRT semantic person segmenter on the same labelled dataset.
@@ -32,7 +32,7 @@ A checked box means code or documentation has been added; it does not mean devic
 - [x] Bundled ML Kit model processing captured frames in memory.
 - [x] 640 px longest-edge cap, bounded ImageReader, inference throttling, and stale-frame watchdog.
 - [x] Blurred mask rendering plus a fail-closed opaque overlay on inference/capture errors.
-- [x] User-adjustable blur strength and inference/frame metrics in the UI.
+- [x] Separate Home/Settings navigation, persisted blur strength, confidence threshold, mask expansion, and inference metrics.
 - [x] Android unit tests and CI audit that rejects a merged INTERNET permission.
 - [x] CodeQL workflow for Kotlin/Java and JavaScript/TypeScript.
 - [x] Dependabot weekly updates for GitHub Actions, npm, and Gradle dependencies.
@@ -61,3 +61,13 @@ A checked box means code or documentation has been added; it does not mean devic
 - [ ] Add dependency scanning, release signing, and reproducible release checks.
 - [ ] Audit network traffic and verify no media payload leaves the device.
 - [ ] Publish limitations and do not claim universal coverage.
+
+
+## M2.1 — UX, performance and toolchain
+- [x] Separate Home/Settings navigation and persisted blur, sensitivity and mask expansion controls.
+- [x] Do not block capture startup when POST_NOTIFICATIONS is denied.
+- [x] Coalesce Compose metrics and floating-panel text updates.
+- [x] Remove the five-pixel black-frame heuristic that misclassified dark UI.
+- [x] Use ML Kit raw-size masks and confidence threshold controls.
+- [x] Centralize Android dependency pins in a Gradle version catalog.
+- [ ] Verify install, overlay behavior and battery/thermal performance on physical low-end and high-density devices.

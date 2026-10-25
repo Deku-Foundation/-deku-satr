@@ -10,17 +10,17 @@ Deku Satr is being developed as a native Android utility that attempts to mask p
 
 Path: android/
 
-- Kotlin app with an Arabic-first, responsive Material 3 interface, a centered 680 dp maximum content width for tablets/desktop windows, system light/dark themes, and enlarged 48 dp floating Stop control.
+- Kotlin app with Arabic-first Material 3 UI, separate Home/Settings destinations, adaptive 680 dp maximum width, system light/dark themes, and a 48 dp floating Stop control.
 - Explicit overlay permission and Android MediaProjection consent for every capture session; Android 14+ requests the full default display rather than a single app window.
 - A visible media-projection foreground service, notification stop action, draggable floating stop panel, and a full-screen transparent mask layer that does not accept touches.
 - Bundled model: ML Kit Selfie Segmentation 16.0.0-beta6. The model assets are statically linked at build time; the app does not download model weights on first launch.
 - Local in-memory processing: screen frames are downscaled to a 640 px longest edge, decoded from RGBA with explicit channel handling, inference is throttled, new frames are dropped while the model is busy, and masked areas are blurred with a bounded two-pass CPU blur.
 - Android 12+ pass-through touch requires a maximum 0.8 opacity for the normal overlay. This is a documented residual-image tradeoff; fail-closed mode is fully opaque and may block underlying touches until Stop is tapped.
 - No camera or microphone permission, no screenshot file storage, and the manifest merger is instructed to remove the INTERNET permission.
-- Unit tests for capture-size policy and confidence-mask thresholding/dilation, including rejection of NaN/infinite/out-of-range model confidence values.
+- Unit tests for capture-size policy, mask confidence bounds, and persisted filter-setting ranges.
 - GitHub Actions builds/tests the Android app, audits the merged manifest for the INTERNET permission, and uploads a debug APK artifact.
 
-The current model adds approximately 4.5 MB according to Google's ML Kit guide. It is a beta API and uses a selfie segmentation model, so the screen-capture domain still requires real-device evaluation. See Android architecture (docs/android-architecture.md), privacy notes (docs/android-privacy.md), and model evaluation (docs/model-evaluation.md).
+The current model adds approximately 4.5 MB according to Google's ML Kit guide. It is a beta API using a selfie-oriented model; sensitivity and mask expansion are configurable, but full-screen multi-person performance still requires real-device evaluation. See Android architecture (docs/android-architecture.md), privacy notes (docs/android-privacy.md), and model evaluation (docs/model-evaluation.md).
 
 ## Download a development APK
 
@@ -29,7 +29,7 @@ https://github.com/Deku-Foundation/deku-satr/actions/workflows/android.yml
 
 Download the deku-satr-debug-apk artifact from a completed run. It is a debug build, not a production-signed release.
 
-To build locally, install JDK 17, Gradle 8.13, Android SDK Platform 36, and accept the SDK licenses:
+To build locally, install JDK 17, Gradle 9.5.0, Android SDK Platform 36, and accept the SDK licenses:
 
     gradle --no-daemon -p android testDebugUnitTest assembleDebug
 
@@ -69,3 +69,10 @@ The PWA uses Xenova/segformer-b0-finetuned-ade-512-512 through Transformers.js a
 ## License
 
 Repository code is MIT-licensed. ML Kit, AndroidX, and other third-party libraries have their own license terms.
+
+
+## Version 0.4.0
+Home contains session status and Start/Stop. Filter strength, confidence threshold and mask expansion are on the Settings destination and persist locally when saved. Denying POST_NOTIFICATIONS no longer blocks the capture flow; Android may restrict the notification's drawer visibility while the system foreground-service rules and the app/overlay Stop controls remain in force. Metrics are throttled to avoid recomposing the whole dashboard at inference frequency.
+
+## Android build tools
+Build plugin and library pins live in android/gradle/libs.versions.toml. The current toolchain is AGP 9.3.0, Gradle 9.5.0 and JDK 17. The existing Kotlin/Compose compiler plugins are kept through explicit AGP migration flags until the built-in Kotlin/new DSL migration has its own validation.
