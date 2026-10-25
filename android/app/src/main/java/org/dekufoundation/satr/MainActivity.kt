@@ -98,6 +98,7 @@ class MainActivity : ComponentActivity() {
     private var snapshot by mutableStateOf(SessionStatus.current())
     private var overlayAllowed by mutableStateOf(false)
     private var notificationsAllowed by mutableStateOf(true)
+    private var showWelcome by mutableStateOf(false)
     private var processedImage by mutableStateOf<Bitmap?>(null)
     private var mediaBusy by mutableStateOf(false)
     private var mediaMessage by mutableStateOf("اختر صورة لتحليلها محلياً.")
@@ -149,6 +150,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         FilterSettings.initialize(applicationContext)
+        showWelcome = !getSharedPreferences("satr_ui", Context.MODE_PRIVATE).getBoolean("welcome_seen", false)
         overlayAllowed = Settings.canDrawOverlays(this)
         notificationsAllowed =
             Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
@@ -172,6 +174,9 @@ class MainActivity : ComponentActivity() {
                         mediaCoverage = mediaCoverage,
                         onPickImage = ::pickImage,
                         onSaveImage = ::saveProcessedImage,
+                        showWelcome = showWelcome,
+                        onWelcomeDone = ::completeWelcome,
+                        onOpenSource = ::openSource,
                     )
                 }
             }
@@ -231,6 +236,16 @@ class MainActivity : ComponentActivity() {
                 uiHandler.postDelayed(flushPendingSnapshot, delay)
             }
         }
+    }
+
+    private fun completeWelcome() {
+        getSharedPreferences("satr_ui", Context.MODE_PRIVATE).edit().putBoolean("welcome_seen", true).apply()
+        showWelcome = false
+    }
+
+    private fun openSource() {
+        runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Deku-Foundation/deku-satr"))) }
+            .onFailure { mediaMessage = "تعذر فتح صفحة المشروع؛ يمكنك زيارة مستودع Deku-Foundation/deku-satr." }
     }
 
     private fun pickImage() { imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
@@ -449,9 +464,10 @@ private fun SatrDashboard(
  onGrantOverlay:()->Unit, onOpenNotificationSettings:()->Unit, onSaveFilterSettings:()->Unit,
  onStart:()->Unit, onStop:()->Unit, processedImage:Bitmap?, mediaBusy:Boolean, mediaMessage:String,
  mediaCoverage:Int, onPickImage:()->Unit, onSaveImage:()->Unit,
+ showWelcome:Boolean, onWelcomeDone:()->Unit, onOpenSource:()->Unit,
 ) {
  val running=snapshot.phase in setOf(SatrPhase.STARTING,SatrPhase.FILTERING,SatrPhase.NO_PERSON_DETECTED,SatrPhase.FAIL_CLOSED)
- var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+ var selectedTab by rememberSaveable { mutableIntStateOf(if (showWelcome) -1 else 0) }
  var blurStrength by rememberSaveable { mutableFloatStateOf(FilterSettings.blurStrengthPercent.toFloat()) }
  var confidenceThreshold by rememberSaveable { mutableFloatStateOf(FilterSettings.confidenceThreshold) }
  var maskExpansion by rememberSaveable { mutableFloatStateOf(FilterSettings.maskExpansionRadius.toFloat()) }
@@ -462,7 +478,7 @@ private fun SatrDashboard(
  val scrollState=rememberScrollState()
  Surface(Modifier.fillMaxSize(),color=MaterialTheme.colorScheme.background) {
   Scaffold(containerColor=MaterialTheme.colorScheme.background,bottomBar={
-   NavigationBar { listOf("الرئيسية","المعرض","المحرر","الإعدادات").forEachIndexed { i,label ->
+   if (selectedTab >= 0) NavigationBar { listOf("الرئيسية","المعرض","المحرر","الإعدادات").forEachIndexed { i,label ->
     NavigationBarItem(selected=selectedTab==i,onClick={selectedTab=i},icon={Text(listOf("⌂","▦","✎","⚙")[i],style=MaterialTheme.typography.titleLarge)},label={Text(label,maxLines=1)})
    } }
   }) { padding ->
@@ -470,6 +486,7 @@ private fun SatrDashboard(
     Column(Modifier.widthIn(max=680.dp).fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars.only(WindowInsetsSides.Top)).verticalScroll(scrollState).padding(horizontal=18.dp).padding(top=12.dp,bottom=24.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
      SatrHeader()
      when(selectedTab) {
+      -1 -> WelcomeScreen(onContinue = { selectedTab = 0; onWelcomeDone() }, onOpenSource = onOpenSource)
       0 -> {
        Text("الرئيسية",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
        HeroPanel(); SessionCard(snapshot)
@@ -514,6 +531,61 @@ private fun SatrDashboard(
    }
   }
  }
+}
+
+@Composable
+private fun WelcomeScreen(onContinue: () -> Unit, onOpenSource: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = 22.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Image(
+            painter = painterResource(R.drawable.ic_satr),
+            contentDescription = "شعار ستر بلور",
+            modifier = Modifier.size(92.dp),
+        )
+        Text(
+            "حماية بصرية تبقى على جهازك",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.ExtraBold,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            "يطمس ستر بلور المناطق التي يكتشفها في الصور وإطارات الشاشة، مع خيارات للتمويه والبكسلة والتغطية.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        listOf(
+            "كل شيء على الجهاز" to "تُعالج الصور والإطارات محلياً.",
+            "بلا حسابات ولا تتبّع" to "لا رفع للصور ولا تحليلات داخل التطبيق.",
+            "مفتوح المصدر" to "يمكن مراجعة الكود والمساهمة فيه.",
+        ).forEach { (title, detail) ->
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            ) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        Button(onClick = onContinue, modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp), shape = RoundedCornerShape(16.dp)) {
+            Text("ابدأ")
+        }
+        OutlinedButton(onClick = onOpenSource, modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp), shape = RoundedCornerShape(16.dp)) {
+            Text("اطّلع على الكود المصدري")
+        }
+        Text(
+            "قد يفوت النموذج بعض الأشخاص. راجع النتيجة قبل مشاركة أي صورة، واختبر الفلترة على جهازك.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+    }
 }
 
 @Composable
