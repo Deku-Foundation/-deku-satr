@@ -4,7 +4,7 @@
 
 Deku Satr is being developed as a native Android utility that attempts to mask people visible on the screen across apps. The repository also retains a browser prototype for research. Android work is the active product path.
 
-> **Prototype warning:** the Android filter now runs an embedded person-segmentation model and draws a blurred mask, but the LR-ASPP semantic person segmenter is now integrated as an experimental candidate, but has not been validated for all screen content. It can miss small or distant people. Secure windows and DRM content may be un-capturable. Do not treat this release as guaranteed protection.
+> **Prototype warning:** the Android filter now runs an embedded person-segmentation model and draws a blurred mask, the LR-ASPP semantic person segmenter is integrated as an experimental candidate, but has not been validated for all screen content. It can miss small or distant people. Secure windows and DRM content may be un-capturable. Do not treat this release as guaranteed protection.
 
 ## Native Android — current milestone
 
@@ -68,7 +68,7 @@ The PWA uses Xenova/segformer-b0-finetuned-ade-512-512 through Transformers.js a
 
 ## License
 
-Repository code is MIT-licensed. ML Kit, AndroidX, and other third-party libraries have their own license terms.
+Repository code is MIT-licensed. LiteRT/TFLite and AndroidX have their own license terms. The LR-ASPP converted model's distribution license still needs explicit verification before a release APK is published.
 
 
 ## Version 0.4.2
