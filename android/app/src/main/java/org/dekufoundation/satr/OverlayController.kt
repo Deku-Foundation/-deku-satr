@@ -67,7 +67,12 @@ class OverlayController(
 
     fun updateFilterFrame(bitmap: Bitmap) {
         mainHandler.post {
-            filterView?.showMask(bitmap)
+            val currentView = filterView
+            if (currentView == null) {
+                if (!bitmap.isRecycled) bitmap.recycle()
+                return@post
+            }
+            currentView.showMask(bitmap)
         }
     }
 
@@ -110,6 +115,7 @@ class OverlayController(
         mainHandler.post {
             val panel = controlPanel
             val filter = filterView
+            filter?.dispose()
             try {
                 if (panel != null) windowManager.removeView(panel)
             } catch (_: IllegalArgumentException) {
@@ -258,14 +264,28 @@ class OverlayController(
         }
 
         fun showMask(bitmap: Bitmap) {
+            val previous = maskBitmap
             maskBitmap = bitmap
             failClosed = false
             invalidate()
+            if (previous != null && previous !== bitmap && !previous.isRecycled) {
+                previous.recycle()
+            }
         }
 
         fun showFailClosed() {
+            val previous = maskBitmap
+            maskBitmap = null
             failClosed = true
             invalidate()
+            if (previous != null && !previous.isRecycled) previous.recycle()
+        }
+
+        fun dispose() {
+            val previous = maskBitmap
+            maskBitmap = null
+            failClosed = true
+            if (previous != null && !previous.isRecycled) previous.recycle()
         }
 
         override fun onDraw(canvas: Canvas) {
