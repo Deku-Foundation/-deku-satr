@@ -48,6 +48,13 @@ Requires Node.js 22:
 
 The PWA uses Xenova/segformer-b0-finetuned-ade-512-512 through Transformers.js as a research baseline. The upstream model license is listed as "other"; review exact terms before distributing those weights. This browser model is separate from the native Android model.
 
+## GitHub security automation
+
+- CodeQL workflow analyzes browser JavaScript/TypeScript and the Android Kotlin code on pull requests and weekly scheduled runs.
+- Dependabot checks GitHub Actions, npm packages, and Gradle dependencies weekly.
+- Android CI verifies tests/build and fails if INTERNET is present in the merged APK manifest.
+- See SECURITY.md for the threat model, disclosure guidance, and release gates.
+
 ## Engineering and security principles
 
 - Process pixels on the device and keep them in memory only.

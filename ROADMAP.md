@@ -34,6 +34,9 @@ A checked box means code or documentation has been added; it does not mean devic
 - [x] Blurred mask rendering plus a fail-closed opaque overlay on inference/capture errors.
 - [x] User-adjustable blur strength and inference/frame metrics in the UI.
 - [x] Android unit tests and CI audit that rejects a merged INTERNET permission.
+- [x] CodeQL workflow for Kotlin/Java and JavaScript/TypeScript.
+- [x] Dependabot weekly updates for GitHub Actions, npm, and Gradle dependencies.
+- [x] Security policy and vulnerability-reporting guidance.
 - [ ] Test installation and the capture/overlay composition loop on actual phones and Android versions.
 - [ ] Confirm whether the overlay re-enters MediaProjection frames and characterize any temporal feedback/ghosting.
 - [x] Request the default display (not one app window) on Android 14+ while retaining the system consent prompt.
