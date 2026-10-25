@@ -6,14 +6,14 @@ plugins {
 
 android {
     namespace = "org.dekufoundation.satr"
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "org.dekufoundation.satr"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.4.1"
         testInstrumentationRunner = "android.test.InstrumentationTestRunner"
     }
 
