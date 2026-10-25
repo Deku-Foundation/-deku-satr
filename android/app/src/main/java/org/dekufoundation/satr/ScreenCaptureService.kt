@@ -211,7 +211,8 @@ class ScreenCaptureService : Service() {
             imageToBitmap(image)
         } catch (_: Exception) {
             inferenceBusy.set(false)
-            if (!stopping) failClosed("تعذر قراءة إطار الشاشة؛ غُطّيت الشاشة احتياطياً.")
+            if (stopping) closeSegmenterIfSafe()
+            else failClosed("تعذر قراءة إطار الشاشة؛ غُطّيت الشاشة احتياطياً.")
             return
         } finally {
             image.close()
@@ -227,7 +228,8 @@ class ScreenCaptureService : Service() {
         if (isNearUniformBlack(frame)) {
             frame.recycle()
             inferenceBusy.set(false)
-            failClosed("لم تصل صورة شاشة قابلة للتحليل؛ غُطّيت الشاشة احتياطياً.")
+            if (stopping) closeSegmenterIfSafe()
+            else failClosed("لم تصل صورة شاشة قابلة للتحليل؛ غُطّيت الشاشة احتياطياً.")
             return
         }
 
@@ -313,7 +315,8 @@ class ScreenCaptureService : Service() {
         } catch (_: Exception) {
             if (!frame.isRecycled) frame.recycle()
             inferenceBusy.set(false)
-            if (!stopping) failClosed("تعذر تشغيل النموذج؛ غُطّيت الشاشة احتياطياً.")
+            if (stopping) closeSegmenterIfSafe()
+            else failClosed("تعذر تشغيل النموذج؛ غُطّيت الشاشة احتياطياً.")
         }
     }
 
@@ -380,6 +383,7 @@ class ScreenCaptureService : Service() {
     }
 
     private fun failClosed(detail: String) {
+        if (stopping) return
         val current = SessionStatus.current()
         val next = current.copy(
             phase = SatrPhase.FAIL_CLOSED,
