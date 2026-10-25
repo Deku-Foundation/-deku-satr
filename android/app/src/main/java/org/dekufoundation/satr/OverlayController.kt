@@ -10,6 +10,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
@@ -33,6 +34,9 @@ class OverlayController(
     private var controlDetail: TextView? = null
     private var controlButton: TextView? = null
     private var controlParams: WindowManager.LayoutParams? = null
+    private var lastPanelUpdateMs = 0L
+    private var lastPanelPhase: SatrPhase? = null
+    private var lastPanelDetail: String? = null
 
     fun show(): Boolean {
         if (!Settings.canDrawOverlays(appContext)) return false
@@ -92,27 +96,40 @@ class OverlayController(
 
     fun updateSession(snapshot: SatrSessionSnapshot) {
         mainHandler.post {
-            controlTitle?.text = when (snapshot.phase) {
-                SatrPhase.STARTING -> "دِكو سَتر · جارٍ التحضير"
-                SatrPhase.FILTERING -> "دِكو سَتر · تمويه تجريبي"
-                SatrPhase.NO_PERSON_DETECTED -> "دِكو سَتر · لا توجد منطقة واضحة"
-                SatrPhase.FAIL_CLOSED -> "دِكو سَتر · إخفاء احتياطي"
-                SatrPhase.ERROR -> "دِكو سَتر · حدث خطأ"
-                else -> "دِكو سَتر · جلسة الالتقاط"
+            val now = SystemClock.elapsedRealtime()
+            val phaseChanged = snapshot.phase != lastPanelPhase
+            val detailChanged = snapshot.detail != lastPanelDetail
+            val refreshPanel = phaseChanged || detailChanged || now - lastPanelUpdateMs >= PANEL_METRICS_REFRESH_MS
+
+            if (phaseChanged || lastPanelPhase == null) {
+                controlTitle?.text = when (snapshot.phase) {
+                    SatrPhase.STARTING -> "دِكو سَتر · جارٍ التحضير"
+                    SatrPhase.FILTERING -> "دِكو سَتر · تمويه تجريبي"
+                    SatrPhase.NO_PERSON_DETECTED -> "دِكو سَتر · لا توجد منطقة واضحة"
+                    SatrPhase.FAIL_CLOSED -> "دِكو سَتر · إخفاء احتياطي"
+                    SatrPhase.ERROR -> "دِكو سَتر · حدث خطأ"
+                    else -> "دِكو سَتر · جلسة الالتقاط"
+                }
             }
-            controlDetail?.text = buildString {
-                append(snapshot.detail.take(70))
-                snapshot.lastInferenceMs?.let { append(" · ").append(it).append(" ms") }
+
+            if (refreshPanel) {
+                controlDetail?.text = buildString {
+                    append(snapshot.detail.take(70))
+                    snapshot.lastInferenceMs?.let { append(" · ").append(it).append(" ms") }
+                }
+                controlDetail?.setTextColor(
+                    if (snapshot.phase == SatrPhase.FAIL_CLOSED || snapshot.phase == SatrPhase.ERROR) {
+                        Color.rgb(255, 215, 140)
+                    } else {
+                        Color.rgb(197, 220, 225)
+                    },
+                )
+                lastPanelUpdateMs = now
             }
-            controlDetail?.setTextColor(
-                if (snapshot.phase == SatrPhase.FAIL_CLOSED || snapshot.phase == SatrPhase.ERROR) {
-                    Color.rgb(255, 215, 140)
-                } else {
-                    Color.rgb(197, 220, 225)
-                },
-            )
-            controlButton?.isEnabled = true
-            filterView?.invalidate()
+            lastPanelPhase = snapshot.phase
+            lastPanelDetail = snapshot.detail
+            // The mask view is invalidated by updateFilterFrame(); phase-only updates do not need
+            // a second invalidation of the full-screen surface.
         }
     }
 
@@ -278,6 +295,7 @@ class OverlayController(
         // Fail-closed intentionally restores full opacity and may require the user to tap Stop.
         private const val NORMAL_FILTER_ALPHA = 0.8f
         private const val FAIL_CLOSED_ALPHA = 1.0f
+        private const val PANEL_METRICS_REFRESH_MS = 900L
     }
 
     private fun dp(value: Int): Int = (value * appContext.resources.displayMetrics.density).toInt()

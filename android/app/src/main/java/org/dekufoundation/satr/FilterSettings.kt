@@ -21,9 +21,10 @@ object FilterSettings {
     var blurStrengthPercent: Int = DEFAULT_BLUR_STRENGTH_PERCENT
         set(value) {
             field = value.coerceIn(10, 100)
+            val normalized = (field - 10) / 90f
             blurRadius = (
                 MIN_BLUR_RADIUS +
-                    (MAX_BLUR_RADIUS - MIN_BLUR_RADIUS) * field / 100f
+                    (MAX_BLUR_RADIUS - MIN_BLUR_RADIUS) * normalized
                 ).roundToInt().coerceIn(MIN_BLUR_RADIUS, MAX_BLUR_RADIUS)
         }
 
