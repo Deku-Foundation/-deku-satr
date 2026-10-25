@@ -1,19 +1,18 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
     namespace = "org.dekufoundation.satr"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "org.dekufoundation.satr"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
 
         testInstrumentationRunner = "android.test.runner.AndroidJUnitRunner"
     }
@@ -55,7 +54,7 @@ dependencies {
     implementation("androidx.compose.ui:ui:1.12.1")
     implementation("androidx.compose.ui:ui-tooling-preview:1.12.1")
 
-    // Bundled in the installed APK; no model download is needed at runtime.
+    // Bundled at build time; no runtime model download is required.
     implementation("com.google.mlkit:segmentation-selfie:16.0.0-beta6")
 
     testImplementation("junit:junit:4.13.2")
