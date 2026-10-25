@@ -201,12 +201,7 @@ class ScreenCaptureService : Service() {
                 }
             } catch (_: Exception) {
                 failClosed("تعذر تحميل نموذج تقسيم الأشخاص؛ أوقفت الجلسة.")
-                SessionStatus.publish(
-                    SatrSessionSnapshot(
-                        phase = SatrPhase.ERROR,
-                        detail = "تعذر تحميل النموذج؛ لم تُفعّل الفلترة.",
-                    ),
-                )
+                publishStartError("تعذر تحميل النموذج؛ لم تُفعّل الفلترة.")
                 stopSelf()
             }
         }
