@@ -1,0 +1,102 @@
+name: Temporary RTMDet Android candidate runtime probe
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - ".github/workflows/model-runtime-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Read pinned model card and preprocessing contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --connect-timeout 20 --max-time 60 \
+            "https://huggingface.co/tori29umai/rtmdet-ins-onnx-person-masks/resolve/e5218e8d47d7c50077f27f9893a28e0ef2ad5656/README.md" -o model-readme.md
+          echo "--- model readme ---"
+          sed -n '1,240p' model-readme.md
+          echo "--- preprocessing and output references ---"
+          grep -niE 'preprocess|mean|std|normalize|padding|letterbox|outputs|mask_overlap|score_thr|dets|labels|masks' model-readme.md | head -100 || true
+      - name: Inspect upstream preprocessing and mask NMS implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://huggingface.co/tori29umai/rtmdet-ins-onnx-person-masks/resolve/e5218e8d47d7c50077f27f9893a28e0ef2ad5656"
+          curl --fail --location --retry 3 --connect-timeout 20 --max-time 60 "$base/examples/infer_person_masks.py" -o infer_person_masks.py
+          grep -nE -A24 -B8 'def preprocess|def postprocess|def mask_overlap|resize|normalize|mean|std|pad|letterbox|score_thr|mask_overlap_thr|masks|dets|labels' infer_person_masks.py | head -240
+      - name: Download pinned RTMDet-Ins-S and check integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://huggingface.co/tori29umai/rtmdet-ins-onnx-person-masks/resolve/e5218e8d47d7c50077f27f9893a28e0ef2ad5656/models/s/rtmdet-ins_s_640x640.onnx"
+          curl --fail --location --retry 3 --connect-timeout 20 --max-time 180 "$url" -o rtmdet-ins-s.onnx
+          echo "Expected SHA: 9cd1787fbf3eb2bd64cc2d8154f41c036f5484b85599e1cbe0227a2dc5a4a08b"
+          echo "Actual SHA:"
+          sha256sum rtmdet-ins-s.onnx | tee model.sha256
+          echo "9cd1787fbf3eb2bd64cc2d8154f41c036f5484b85599e1cbe0227a2dc5a4a08b  rtmdet-ins-s.onnx" | sha256sum --check -
+          stat --format='S model bytes: %s' rtmdet-ins-s.onnx
+      - name: Download RTMDet-Ins-Tiny comparator
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://huggingface.co/tori29umai/rtmdet-ins-onnx-person-masks/resolve/e5218e8d47d7c50077f27f9893a28e0ef2ad5656/models/tiny/rtmdet-ins_tiny_640x640.onnx"
+          curl --fail --location --retry 3 --connect-timeout 20 --max-time 180 "$url" -o rtmdet-ins-tiny.onnx
+          echo "Tiny SHA-256:"
+          sha256sum rtmdet-ins-tiny.onnx
+          stat --format='Tiny model bytes: %s' rtmdet-ins-tiny.onnx
+      - name: Inspect both graphs and execute CPU smoke tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "numpy<3" "onnxruntime==1.31.0" onnx
+          python - <<'PY'
+          import json, resource, time
+          import numpy as np
+          import onnx
+          import onnxruntime as ort
+
+          for model_path in ["rtmdet-ins-s.onnx", "rtmdet-ins-tiny.onnx"]:
+              graph = onnx.load(model_path, load_external_data=False)
+              onnx.checker.check_model(graph)
+              options = ort.SessionOptions()
+              options.intra_op_num_threads = 4
+              options.inter_op_num_threads = 1
+              options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+              session = ort.InferenceSession(model_path, sess_options=options, providers=["CPUExecutionProvider"])
+              print("\\nMODEL:", model_path)
+              print("ONNX graph valid:", True)
+              print("ORT version:", ort.__version__)
+              for value in session.get_inputs():
+                  print("INPUT", value.name, value.type, value.shape)
+              for value in session.get_outputs():
+                  print("OUTPUT", value.name, value.type, value.shape)
+              inputs = {}
+              for value in session.get_inputs():
+                  dims = [d if isinstance(d, int) and d > 0 else 1 for d in value.shape]
+                  if "uint8" in value.type:
+                      inputs[value.name] = np.zeros(dims, dtype=np.uint8)
+                  elif "int64" in value.type:
+                      inputs[value.name] = np.zeros(dims, dtype=np.int64)
+                  else:
+                      inputs[value.name] = np.zeros(dims, dtype=np.float32)
+              start = time.perf_counter()
+              results = session.run(None, inputs)
+              elapsed_ms = (time.perf_counter() - start) * 1000
+              for meta, result in zip(session.get_outputs(), results):
+                  print("RESULT", meta.name, result.dtype, result.shape, "bytes=", result.nbytes)
+              print("Cold CPU smoke latency ms:", round(elapsed_ms, 2))
+              print("Max RSS KiB:", resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+              session = None
+          PY

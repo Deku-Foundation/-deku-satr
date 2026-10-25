@@ -19,6 +19,10 @@ data class SatrSessionSnapshot(
     val lastInferenceMs: Long? = null,
     val maskCoveragePercent: Int? = null,
     val modelReady: Boolean = false,
+    val detectedPeople: List<TrackedPersonBox> = emptyList(),
+    val personModelProfile: PersonModelProfile = PersonModelProfile.FAST_SEMANTIC,
+    val personTargetMode: PersonTargetMode = PersonTargetMode.MASK_ALL,
+    val selectedTrackIds: Set<Long> = emptySet(),
 )
 
 object SessionStatus {

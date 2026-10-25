@@ -168,3 +168,12 @@ The current LR-ASPP output is a single semantic mask for the person class. It ca
 - The decoder skips full softmax only when a mathematical upper bound proves the person probability cannot pass the app's minimum threshold. Pixels that might be accepted retain the original softmax.
 - During model warm-up the overlay stays clear and the compact indicator says protection is not active yet. Inference failure or stale output triggers an opaque charcoal fallback; the stop panel remains available.
 - Tap the status title to show or hide details; drag it to move the panel. The Stop touch target remains at least 48 dp high.
+
+
+## Next model candidate: per-instance masks
+
+The current shipping model is LR-ASPP + MobileNetV3-Large, which provides a union/semantic person map. For user-selective person targets, the source-based candidate is RTMDet-Ins-S ONNX (~41 MB, Apache-2.0, COCO mask mAP 38.7); RTMDet-Ins-Tiny (~23 MB, mask mAP 35.4) is the compact alternative. Its repository publishes a 640×640 BGR input with aspect-preserving resize/padding and separate `dets`, `labels`, and per-instance `masks` outputs. See the model card in `docs/model-evaluation.md`.
+
+The model file has not been bundled yet. Before adding it to the build, pin the exact Hugging Face revision and SHA-256, include the Apache license/NOTICE, measure packaged size, and verify ONNX Runtime Android compatibility on the target ABIs. Do not fetch an unpinned `main` model or download weights at runtime. Only then should the user-selectable per-person mask UI be enabled.
+
+A pure target-policy utility now specifies the mask-composition behavior for an instance backend: mask all by default, mask only the instances the user selected, or mask all except explicit selections. Empty selection and missing selected tracks are handled conservatively so an uninitialized selector does not silently turn off protection. The current semantic model cannot drive this feature reliably, so no misleading targeting toggle is shown in the UI yet.

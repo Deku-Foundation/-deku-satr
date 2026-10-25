@@ -35,7 +35,11 @@ class ScreenCaptureService : Service() {
     private var captureThread: HandlerThread? = null
     private var captureHandler: Handler? = null
     private var overlayController: OverlayController? = null
-    @Volatile private var segmenter: LrasppPersonSegmenter? = null
+    @Volatile private var segmenter: PersonSegmentationEngine? = null
+    @Volatile private var activePersonModelProfile: PersonModelProfile = PersonModelProfile.FAST_SEMANTIC
+    private val personTrackAssociator = PersonTrackAssociator()
+    private var lastTargetMode = PersonTargetMode.MASK_ALL
+    private var lastSelectedTrackIds: Set<Long> = emptySet()
     private var inferenceExecutor: ExecutorService? = null
     private val inferenceBusy = AtomicBoolean(false)
     private val temporalMaskSmoother = TemporalMaskSmoother()
@@ -112,6 +116,10 @@ class ScreenCaptureService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        if (intent?.action == ACTION_UPDATE_TARGETS) {
+            applyTargetUpdate(intent)
+            return START_NOT_STICKY
+        }
         if (projection != null) return START_NOT_STICKY
 
         val command = intent
@@ -136,6 +144,9 @@ class ScreenCaptureService : Service() {
             SatrSessionSnapshot(
                 phase = SatrPhase.STARTING,
                 detail = "يجري إعداد الالتقاط والنموذج المضمّن؛ لم تُثبت الحماية بعد.",
+                personModelProfile = activePersonModelProfile,
+                personTargetMode = FilterSettings.personTargetMode,
+                selectedTrackIds = emptySet(),
             ),
         )
 
@@ -158,6 +169,56 @@ class ScreenCaptureService : Service() {
         }
     }
 
+    private fun applyTargetUpdate(command: Intent?) {
+        if (projection == null || stopping || activePersonModelProfile != PersonModelProfile.RTMDET_INS_S) {
+            FilterSettings.personTargetMode = PersonTargetMode.MASK_ALL
+            FilterSettings.selectedPersonTrackIds = emptySet()
+            SessionStatus.update { current ->
+                current.copy(
+                    detail = "لتحديد أشخاص منفردين، اختر نموذج التقسيم الفردي ثم ابدأ جلسة جديدة.",
+                    personTargetMode = PersonTargetMode.MASK_ALL,
+                    selectedTrackIds = emptySet(),
+                )
+            }
+            return
+        }
+        val requestedMode = runCatching {
+            PersonTargetMode.valueOf(command?.getStringExtra(EXTRA_TARGET_MODE) ?: PersonTargetMode.MASK_ALL.name)
+        }.getOrDefault(PersonTargetMode.MASK_ALL)
+        val requestedIds = command?.getStringExtra(EXTRA_SELECTED_TRACK_IDS)
+            .orEmpty()
+            .split(',')
+            .mapNotNull { it.toLongOrNull()?.takeIf { id -> id >= 0L } }
+            .toSet()
+        val safeMode = if (requestedMode == PersonTargetMode.MASK_SELECTED_ONLY && requestedIds.isEmpty()) {
+            PersonTargetMode.MASK_ALL
+        } else {
+            requestedMode
+        }
+        FilterSettings.selectedPersonTrackIds = requestedIds
+        FilterSettings.personTargetMode = safeMode
+        synchronized(this) {
+            lastGoodConfidence = null
+            lastGoodMaskWidth = 0
+            lastGoodMaskHeight = 0
+            lastGoodMaskAtMs = 0L
+            personFramesInARow = 0
+            emptyFramesInARow = 0
+            temporalMaskSmoother.reset()
+        }
+        SessionStatus.update { current ->
+            current.copy(
+                detail = if (requestedMode == PersonTargetMode.MASK_SELECTED_ONLY && requestedIds.isEmpty()) {
+                    "لم تحدد أي شخص؛ عادت الحماية إلى طمس الجميع."
+                } else {
+                    "تم تحديث اختيار الأشخاص يدوياً. هذا لا يعيد تدريب أوزان النموذج."
+                },
+                personTargetMode = safeMode,
+                selectedTrackIds = requestedIds,
+            )
+        }
+    }
+
     private fun startCaptureSession(
         resultCode: Int,
         resultData: Intent,
@@ -167,6 +228,12 @@ class ScreenCaptureService : Service() {
     ) {
         stopping = false
         terminalError = false
+        activePersonModelProfile = FilterSettings.personModelProfile
+        FilterSettings.personTargetMode = PersonTargetMode.MASK_ALL
+        FilterSettings.selectedPersonTrackIds = emptySet()
+        personTrackAssociator.reset()
+        lastTargetMode = PersonTargetMode.MASK_ALL
+        lastSelectedTrackIds = emptySet()
         synchronized(this) {
             personFramesInARow = 0
             emptyFramesInARow = 0
@@ -198,10 +265,16 @@ class ScreenCaptureService : Service() {
             ?: throw IllegalStateException("The inference executor could not be created.")
         modelExecutor.execute {
             try {
-                val loadedModel = LrasppPersonSegmenter(applicationContext)
+                val loadedModel: PersonSegmentationEngine = when (activePersonModelProfile) {
+                    PersonModelProfile.FAST_SEMANTIC -> LrasppPersonSegmenter(applicationContext)
+                    PersonModelProfile.RTMDET_INS_S -> RtmdetPersonSegmenter(applicationContext)
+                }
                 synchronized(this) {
                     if (stopping) loadedModel.close() else segmenter = loadedModel
                 }
+            } catch (_: OutOfMemoryError) {
+                runCatching { failClosed("نفدت ذاكرة الجهاز أثناء تحميل النموذج؛ أوقفت الجلسة.") }
+                stopSelf()
             } catch (_: Exception) {
                 failClosed("تعذر تحميل نموذج تقسيم الأشخاص؛ أوقفت الجلسة.")
                 publishStartError("تعذر تحميل النموذج؛ لم تُفعّل الفلترة.")
@@ -278,6 +351,11 @@ class ScreenCaptureService : Service() {
             lastGoodMaskHeight = 0
             lastGoodMaskAtMs = 0L
             temporalMaskSmoother.reset()
+            personTrackAssociator.reset()
+            FilterSettings.personTargetMode = PersonTargetMode.MASK_ALL
+            FilterSettings.selectedPersonTrackIds = emptySet()
+            lastTargetMode = PersonTargetMode.MASK_ALL
+            lastSelectedTrackIds = emptySet()
         }
         failClosed("تغيّر اتجاه الشاشة أو حجمها؛ يجري ضبط الفلترة مجدداً.")
 
@@ -368,13 +446,51 @@ class ScreenCaptureService : Service() {
                     val mask = currentSegmenter.process(frame, tileWideFrames = FilterSettings.processingProfile.tileWideFrames)
                     if (stopping || frameGeneration != captureGeneration) return@execute
                     val frameNow = SystemClock.elapsedRealtime()
-                    val freshValues = synchronized(this) {
-                        temporalMaskSmoother.smooth(
-                            current = mask.confidence,
+                    val currentTargetMode = FilterSettings.personTargetMode
+                    val currentSelectedIds = FilterSettings.selectedPersonTrackIds
+                    synchronized(this) {
+                        if (currentTargetMode != lastTargetMode || currentSelectedIds != lastSelectedTrackIds) {
+                            lastTargetMode = currentTargetMode
+                            lastSelectedTrackIds = currentSelectedIds.toSet()
+                            lastGoodConfidence = null
+                            lastGoodMaskWidth = 0
+                            lastGoodMaskHeight = 0
+                            lastGoodMaskAtMs = 0L
+                            personFramesInARow = 0
+                            emptyFramesInARow = 0
+                            temporalMaskSmoother.reset()
+                        }
+                    }
+                    val detectedPeople = if (activePersonModelProfile == PersonModelProfile.RTMDET_INS_S) {
+                        personTrackAssociator.update(
+                            mask.instances.map { PersonBoxDetection(it.box, it.confidence) },
+                            frameNow,
+                        )
+                    } else emptyList()
+                    val freshValues = if (activePersonModelProfile == PersonModelProfile.RTMDET_INS_S) {
+                        val instanceMasks = mask.instances.zip(detectedPeople).map { (instance, tracked) ->
+                            PersonInstanceMask(tracked.trackId, mask.width, mask.height, instance.pixels, instance.confidence)
+                        }
+                        val safeMode = if (currentTargetMode == PersonTargetMode.MASK_SELECTED_ONLY && currentSelectedIds.isEmpty()) {
+                            PersonTargetMode.MASK_ALL
+                        } else currentTargetMode
+                        val targetMask = PersonTargetPolicy.composeMask(
                             width = mask.width,
                             height = mask.height,
-                            timestampMs = frameNow,
+                            instances = instanceMasks,
+                            mode = safeMode,
+                            selectedTrackIds = currentSelectedIds,
                         )
+                        FloatArray(targetMask.size) { if (targetMask[it]) 1f else 0f }
+                    } else {
+                        synchronized(this) {
+                            temporalMaskSmoother.smooth(
+                                current = mask.confidence,
+                                width = mask.width,
+                                height = mask.height,
+                                timestampMs = frameNow,
+                            )
+                        }
                     }
                     val threshold = FilterSettings.confidenceThreshold
                     val expansion = FilterSettings.maskExpansionRadius
@@ -415,7 +531,7 @@ class ScreenCaptureService : Service() {
                         maskWidth = mask.width,
                         maskHeight = mask.height,
                         blurRadius = FilterSettings.blurRadius,
-                        threshold = FilterSettings.confidenceThreshold,
+                        threshold = threshold,
                         maskExpansionRadius = expansion,
                         effect = FilterSettings.effect,
                     )
@@ -446,7 +562,11 @@ class ScreenCaptureService : Service() {
                             val next = previous.copy(
                                 phase = if (detected) SatrPhase.FILTERING else SatrPhase.NO_PERSON_DETECTED,
                                 detail = if (detected) {
-                                    "يُطبّق التمويه على المناطق التي يرصدها نموذج LR-ASPP."
+                                    if (activePersonModelProfile == PersonModelProfile.RTMDET_INS_S) {
+                                        "يُطبّق التمويه على الأشخاص المكتشفين وفق اختيارك اليدوي."
+                                    } else {
+                                        "يُطبّق التمويه على قناع الأشخاص الذي ينتجه النموذج الخفيف."
+                                    }
                                 } else {
                                     "لم تُرصد منطقة شخص بوضوح؛ قد يفوّت النموذج الأجسام الصغيرة."
                                 },
@@ -454,6 +574,10 @@ class ScreenCaptureService : Service() {
                                 lastInferenceMs = latencyMs,
                                 maskCoveragePercent = rendered.coveragePercent,
                                 modelReady = true,
+                                detectedPeople = detectedPeople,
+                                personModelProfile = activePersonModelProfile,
+                                personTargetMode = FilterSettings.personTargetMode,
+                                selectedTrackIds = FilterSettings.selectedPersonTrackIds,
                             )
                             lastSuccessfulFrameMs = SystemClock.elapsedRealtime()
                             val shouldUpdateMask =
@@ -471,6 +595,11 @@ class ScreenCaptureService : Service() {
                         }
                     }
                     if (!published && !rendered.overlay.isRecycled) rendered.overlay.recycle()
+                } catch (_: OutOfMemoryError) {
+                    if (!stopping && frameGeneration == captureGeneration) {
+                        runCatching { failClosed("نفدت ذاكرة الجهاز أثناء تحليل الإطار؛ أوقفت الجلسة.", frameGeneration) }
+                        stopSelf()
+                    }
                 } catch (_: Exception) {
                     if (!stopping && frameGeneration == captureGeneration) {
                         failClosed("تعذر إنشاء قناع الأشخاص؛ غُطّيت الشاشة احتياطياً.", frameGeneration)
@@ -711,6 +840,9 @@ class ScreenCaptureService : Service() {
     companion object {
         const val ACTION_START = "org.dekufoundation.satr.action.START_CAPTURE"
         const val ACTION_STOP = "org.dekufoundation.satr.action.STOP_CAPTURE"
+        const val ACTION_UPDATE_TARGETS = "org.dekufoundation.satr.action.UPDATE_TARGETS"
+        const val EXTRA_TARGET_MODE = "target_mode"
+        const val EXTRA_SELECTED_TRACK_IDS = "selected_track_ids"
         const val EXTRA_RESULT_CODE = "projection_result_code"
         const val EXTRA_RESULT_DATA = "projection_result_data"
         const val EXTRA_CAPTURE_WIDTH = "capture_width"

@@ -1,0 +1,31 @@
+name: Temporary RTMDet model asset audit
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - ".github/workflows/model-pin-probe.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download and fingerprint RTMDet-Ins-S candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://huggingface.co/tori29umai/rtmdet-ins-onnx-person-masks/resolve/main/models/s/rtmdet-ins_s_640x640.onnx"
+          curl --fail --location --retry 3 --connect-timeout 20 --max-time 180 \
+            --dump-header response-headers.txt "$url" -o rtmdet-ins-s.onnx
+          echo "Model URL: $url"
+          echo "Response revision headers:"
+          grep -iE '^(x-repo-commit|etag|content-length):' response-headers.txt || true
+          echo "File size:"
+          stat --format='%s bytes' rtmdet-ins-s.onnx
+          echo "SHA-256:"
+          sha256sum rtmdet-ins-s.onnx
+          echo "File magic:"
+          od -An -tx1 -N16 rtmdet-ins-s.onnx
