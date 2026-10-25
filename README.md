@@ -14,7 +14,7 @@ Path: android/
 - Explicit overlay permission and Android MediaProjection consent for every capture session; Android 14+ requests the full default display rather than a single app window.
 - A visible media-projection foreground service, notification stop action, draggable floating stop panel, and a full-screen transparent mask layer that does not accept touches.
 - Bundled model: ML Kit Selfie Segmentation 16.0.0-beta6. The model assets are statically linked at build time; the app does not download model weights on first launch.
-- Local in-memory processing: screen frames are downscaled to a 640 px longest edge, decoded from RGBA with explicit channel handling, inference is throttled, new frames are dropped while the model is busy, and masked areas are blurred with a bounded two-pass CPU blur.
+- Local in-memory processing: screen frames are downscaled to a 640 px longest edge, decoded from RGBA with explicit channel handling, inference is admitted at a 140 ms minimum interval, new frames are dropped while the model is busy, and only masked areas are rendered. A brief 650 ms last-good-mask hold reduces flicker from transient empty masks. The selected effect can be blur, pixelation, or solid cover.
 - Android 12+ pass-through touch requires a maximum 0.8 opacity for the normal overlay. This is a documented residual-image tradeoff; fail-closed mode is fully opaque and may block underlying touches until Stop is tapped.
 - No camera or microphone permission, no screenshot file storage, and the manifest merger is instructed to remove the INTERNET permission.
 - Unit tests for capture-size policy, mask confidence bounds, and persisted filter-setting ranges.
@@ -70,6 +70,10 @@ The PWA uses Xenova/segformer-b0-finetuned-ade-512-512 through Transformers.js a
 
 Repository code is MIT-licensed. ML Kit, AndroidX, and other third-party libraries have their own license terms.
 
+
+## Version 0.4.2
+
+The Satr Blur identity now follows the supplied mihrab-and-fading-layers mark and its deep-green, botanical-green, warm-gold and off-white palette. Settings include working blur, pixelation and opaque-cover choices. Live rendering now defers old bitmap recycling, holds a recent mask briefly through intermittent model dropouts, and targets up to roughly 7 frame admissions per second on devices that can sustain it. The model itself remains ML Kit Selfie Segmentation; this release does not claim 99% accuracy or a validated replacement-model win. Solid cover can block interaction with the app underneath, while the floating Stop control remains available.
 
 ## Version 0.4.1
 The Arabic-first Home destination contains session status and Start/Stop. Filter strength, confidence threshold and mask expansion are on the separate Settings destination and persist locally. The brand uses the supplied Satr Blur palette and mihrab mark, with Deku Foundation credited separately. Denying POST_NOTIFICATIONS no longer blocks the capture flow; Android may restrict the notification's drawer visibility while the system foreground-service rules and the app/overlay Stop controls remain in force. Metrics are throttled to avoid recomposing the whole dashboard at inference frequency. The live mask is held through two transient empty frames to reduce visible blinking on video; empty masks also skip the CPU blur pass.
