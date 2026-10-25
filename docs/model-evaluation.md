@@ -91,3 +91,20 @@ This is a promising general semantic person-mask candidate, but it is NOT integr
 Compare it with ML Kit on the same labelled screen sample set including multiple people, short/long hair, covered heads, different clothing/skin tones, dark screens, small/distant people, occlusion, motion, animation and rotation. Report person recall/miss rate, mask leakage, false-positive area, p50/p95 latency, peak RAM, sustained FPS, temperature, battery and APK size. Published timings on different devices are not directly comparable.
 
 The Settings screen therefore defaults to all people. The current model produces a person/background mask, not a gender label; hair and clothing are not a dependable substitute for a separately validated classifier. Gender-selective blur remains unavailable until a candidate is tested and its error rates are documented.
+
+
+## Satr 0.4.2 pipeline update (2026-10-25)
+
+This release improves temporal stability and effect selection; it does **not** claim that a replacement model has beaten the current model on a labelled benchmark.
+
+- Keep ML Kit Selfie Segmentation in `STREAM_MODE` with raw-size masks. Google documents stream smoothing, multi-person support, and an approximately 4.5 MB bundled footprint; the API remains beta. See the official Android guide above.
+- Raise the frame admission ceiling from 4 fps to about 7 fps (140 ms minimum interval), while preserving single-flight inference and dropping stale frames rather than queueing them. Actual sustained rate remains device-dependent.
+- If a single mask briefly collapses to background, reuse the last non-empty mask for at most 650 ms when the mask dimensions match. Reset that cache on session start and display resize. This is a short dropout guard, not temporal tracking; fast-moving subjects can leave the cached region.
+- Delay recycling replaced overlay bitmaps to reduce the chance that the renderer reads a bitmap while it is being recycled. Solid-cover mode uses an opaque overlay; Android may block interaction with the app underneath, so the visible Stop control remains important.
+- Add blur, pixelation, and solid-cover render modes without adding another runtime dependency. The selected effect is stored locally.
+
+### Model replacement gate remains closed
+
+The current model is still a portrait-oriented person segmenter and cannot infer a person's gender reliably. We have not integrated LR-ASPP/MobileNetV3 or MediaPipe's multi-class model because their end-to-end screen-capture behavior, model artifact provenance/licence, preprocessing/output contract, and low-end-device performance have not yet been validated in this repository. The MediaPipe multiclass model is substantially slower on CPU in Google's published Pixel 6 benchmark, so it is not an automatic upgrade for low-power phones. No 99% accuracy or complete-coverage claim is justified.
+
+The next model comparison must use the same labelled screen/video-frame set and report person recall (including small/distant/occluded subjects), boundary leakage, p50/p95 latency, sustained throughput, peak RAM, thermal behavior, battery draw, and distribution size. Gender-selective filtering is not part of this model contract; the safe default remains all-person segmentation or explicit manual regions.
