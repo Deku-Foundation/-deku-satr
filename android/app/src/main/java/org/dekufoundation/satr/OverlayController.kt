@@ -72,7 +72,7 @@ class OverlayController(
         }
     }
 
-    fun updateFilterFrame(bitmap: Bitmap) {
+    fun updateFilterFrame(bitmap: Bitmap, coveragePercent: Int) {
         mainHandler.post {
             val currentView = filterView
             if (currentView == null) {
@@ -80,7 +80,7 @@ class OverlayController(
                 return@post
             }
             currentView.showMask(bitmap)
-            setFilterWindowAlpha(if (FilterSettings.effect == PrivacyEffect.COVER) FAIL_CLOSED_ALPHA else NORMAL_FILTER_ALPHA)
+            setFilterWindowAlpha(if (FilterSettings.effect == PrivacyEffect.COVER && coveragePercent > 0) FAIL_CLOSED_ALPHA else NORMAL_FILTER_ALPHA)
         }
     }
 
