@@ -56,7 +56,7 @@ class MaskHoldPolicyTest {
                 previousMaskAvailable = true,
                 dimensionsMatch = true,
                 ageMs = 100L,
-                maximumAgeMs = 160L,
+                maximumAgeMs = 250L,
             ),
         )
     }
