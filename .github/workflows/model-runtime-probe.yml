@@ -1,0 +1,74 @@
+name: Temporary RTMDet Android candidate runtime probe
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - ".github/workflows/model-runtime-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Download pinned RTMDet-Ins-S and check integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://huggingface.co/tori29umai/rtmdet-ins-onnx-person-masks/resolve/e5218e8d47d7c50077f27f9893a28e0ef2ad5656/models/s/rtmdet-ins_s_640x640.onnx"
+          curl --fail --location --retry 3 --connect-timeout 20 --max-time 180 "$url" -o rtmdet-ins-s.onnx
+          echo "Expected SHA: 9cd1787fbf3eb2bd64cc2d8154f41c036f5484b85599e1cbe0227a2dc5a4a08b"
+          echo "Actual SHA:"
+          sha256sum rtmdet-ins-s.onnx | tee model.sha256
+          echo "9cd1787fbf3eb2bd64cc2d8154f41c036f5484b85599e1cbe0227a2dc5a4a08b  rtmdet-ins-s.onnx" | sha256sum --check -
+          stat --format='Model bytes: %s' rtmdet-ins-s.onnx
+      - name: Inspect graph and execute CPU smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "numpy<3" "onnxruntime==1.31.0" onnx
+          python - <<'PY'
+          import json, resource, time
+          import numpy as np
+          import onnx
+          import onnxruntime as ort
+
+          model_path = "rtmdet-ins-s.onnx"
+          graph = onnx.load(model_path, load_external_data=False)
+          onnx.checker.check_model(graph)
+          options = ort.SessionOptions()
+          options.intra_op_num_threads = 4
+          options.inter_op_num_threads = 1
+          options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+          session = ort.InferenceSession(model_path, sess_options=options, providers=["CPUExecutionProvider"])
+          print("ONNX graph valid:", True)
+          print("ORT version:", ort.__version__)
+          for value in session.get_inputs():
+              print("INPUT", value.name, value.type, value.shape)
+          for value in session.get_outputs():
+              print("OUTPUT", value.name, value.type, value.shape)
+          inputs = {}
+          for value in session.get_inputs():
+              dims = [d if isinstance(d, int) and d > 0 else 1 for d in value.shape]
+              if "uint8" in value.type:
+                  inputs[value.name] = np.zeros(dims, dtype=np.uint8)
+              elif "int64" in value.type:
+                  inputs[value.name] = np.zeros(dims, dtype=np.int64)
+              else:
+                  inputs[value.name] = np.zeros(dims, dtype=np.float32)
+          start = time.perf_counter()
+          results = session.run(None, inputs)
+          elapsed_ms = (time.perf_counter() - start) * 1000
+          for meta, result in zip(session.get_outputs(), results):
+              print("RESULT", meta.name, result.dtype, result.shape, "bytes=", result.nbytes)
+          print("Cold CPU smoke latency ms:", round(elapsed_ms, 2))
+          print("Max RSS KiB:", resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+          PY
