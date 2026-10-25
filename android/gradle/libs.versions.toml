@@ -5,7 +5,7 @@ activityCompose = "1.13.0"
 composeFoundation = "1.11.4"
 composeMaterial3 = "1.4.0"
 composeUi = "1.11.4"
-mlkitSegmentationSelfie = "16.0.0-beta6"
+litertInterpreter = "1.4.2"
 junit = "4.13.2"
 
 [plugins]
@@ -19,5 +19,5 @@ compose-foundation = { module = "androidx.compose.foundation:foundation", versio
 compose-material3 = { module = "androidx.compose.material3:material3", version.ref = "composeMaterial3" }
 compose-ui = { module = "androidx.compose.ui:ui", version.ref = "composeUi" }
 compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview", version.ref = "composeUi" }
-mlkit-segmentation-selfie = { module = "com.google.mlkit:segmentation-selfie", version.ref = "mlkitSegmentationSelfie" }
+litert-interpreter = { module = "com.google.ai.edge.litert:litert", version.ref = "litertInterpreter" }
 junit = { module = "junit:junit", version.ref = "junit" }
