@@ -540,7 +540,7 @@ private fun SatrDashboard(
        }
        TargetScopeCard()
        PermissionsCard(overlayAllowed,notificationsAllowed,onGrantOverlay,onOpenNotificationSettings)
-       ModelCard(snapshot);SafetyCard();HowItWorksCard()
+       ModelCard(snapshot, modelProfile);SafetyCard();HowItWorksCard()
       }
      }
      Text("ستر بلور · SATR BLUR · من Deku Foundation · إصدار تجريبي 0.5.2",modifier=Modifier.fillMaxWidth().padding(top=4.dp),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,textAlign=TextAlign.Center)
@@ -1162,7 +1162,7 @@ private fun TargetScopeCard() {
                 foreground = MaterialTheme.colorScheme.onPrimaryContainer,
             )
             Text(
-                "الإصدار الحالي يطمس جميع الأشخاص الذين يرصدهم. اختيار الرجال أو النساء يحتاج إلى قناع مستقل لكل شخص ومصنّف مُختبَر؛ هذه الميزة لم تُفعّل بعد. لا يُستخدم طول الشعر أو اللباس كبديل عن التصنيف.",
+                "يمكنك طمس الجميع أو اختيار أشخاص بعينهم من إعدادات التصحيح عند استخدام نموذج التقسيم الفردي. لا يستنتج التطبيق الجنس من المظهر؛ اختر الأشخاص يدوياً لتجنب تخمينات غير موثوقة.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 lineHeight = 21.sp,
@@ -1267,7 +1267,7 @@ private fun PermissionLine(
 }
 
 @Composable
-private fun ModelCard(snapshot: SatrSessionSnapshot) {
+private fun ModelCard(snapshot: SatrSessionSnapshot, profile: PersonModelProfile) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
@@ -1290,7 +1290,7 @@ private fun ModelCard(snapshot: SatrSessionSnapshot) {
                 Spacer(Modifier.width(11.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text("نموذج الأشخاص", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("LiteRT · LR-ASPP + MobileNetV3-Large", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (profile == PersonModelProfile.FAST_SEMANTIC) "LiteRT · LR-ASPP + MobileNetV3-Large" else "ONNX Runtime · RTMDet-Ins-S", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 StatusPill(
                     label = if (snapshot.modelReady) "جاهز" else "مضمّن",
@@ -1303,7 +1303,7 @@ private fun ModelCard(snapshot: SatrSessionSnapshot) {
                 StatusPill("نسخة تجريبية", MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(
-                "نموذج LR-ASPP المكمّم بحجم يقارب 3.52 MB يُضمّن في APK أثناء البناء بعد التحقق من SHA-256. يحتاج البناء إلى تنزيله مرة واحدة؛ لا يحتاج التطبيق إلى الإنترنت وقت التشغيل.",
+                if (profile == PersonModelProfile.FAST_SEMANTIC) "النموذج الخفيف بحجم يقارب 3.52 MB؛ يطمس الأشخاص كقناع واحد. يُنزّل أثناء البناء ويتحقق من SHA-256، ولا يحتاج اتصالاً بالإنترنت وقت التشغيل." else "نموذج تقسيم الأشخاص إلى أقنعة منفصلة؛ حجمه نحو 43.2 MB ويحتاج ذاكرة ومعالجة أكبر. يُضمّن أثناء البناء بعد التحقق من SHA-256، ولا يحتاج اتصالاً بالإنترنت وقت التشغيل.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 lineHeight = 20.sp,
@@ -1334,7 +1334,7 @@ private fun SafetyCard() {
                 Text("حدود النموذج", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFF613E00))
             }
             Text(
-                "LR-ASPP نموذج تقسيم دلالي لفئة الشخص، وليس تتبّعاً منفصلاً لكل فرد ولا مصنّفاً للجنس. في وضعي المتوازن والتفاصيل، تُحلّل الإطارات الطويلة/العريضة على قصاصات متداخلة لتحسين حجم الأشخاص داخل النموذج، لكن ذلك يزيد الحمل وقد يخفض معدل الإطارات. قد يفوّت النموذج الأشخاص الصغار أو البعيدين أو المحجوبين. لا يمكن اعتبار التغطية كاملة قبل اختبارات أجهزة حقيقية؛ وقد يمنع Android التقاط بعض النوافذ الآمنة أو فيديو DRM.",
+                "النموذج الخفيف ينتج قناعاً مشتركاً للأشخاص، أما نموذج RTMDet-Ins-S فينتج أقنعة منفصلة لكنه أكبر وأثقل. قد يفوّت كلاهما الأشخاص الصغار أو البعيدين أو المحجوبين. لا يمكن اعتبار التغطية كاملة قبل اختبارات أجهزة حقيقية؛ وقد يمنع Android التقاط بعض النوافذ الآمنة أو فيديو DRM.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color(0xFF613E00),
                 lineHeight = 22.sp,
