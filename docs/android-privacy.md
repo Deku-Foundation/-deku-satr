@@ -48,3 +48,6 @@ Source: https://developer.android.com/reference/android/view/WindowManager.Layou
 On Android 14+, Satr passes `createConfigForDefaultDisplay()` to the consent intent. The system still requests explicit user consent, but the app requests the entire default display because single-app capture would not filter other apps. Device manufacturers can still constrain this behavior, and secure/DRM windows may remain unavailable.
 
 The service uses the platform `onCapturedContentResize()` callback to update the bounded ImageReader surface and existing virtual display when the captured content changes size (including orientation changes). Old inference generations are discarded so a late mask from the previous size cannot replace the current session state.
+
+
+For Android 8–13, the service also watches the default display's real metrics and updates the bounded capture surface after a rotation/size change. On Android 14+ the MediaProjection resize callback is used. The display listener is unregistered on teardown; screen frames and model outputs remain in memory.

@@ -22,6 +22,8 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
 import android.os.SystemClock
+import android.util.DisplayMetrics
+import android.view.Display
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.segmentation.Segmentation
 import com.google.mlkit.vision.segmentation.SegmentationMask
@@ -48,6 +50,7 @@ class ScreenCaptureService : Service() {
     @Volatile private var captureGeneration = 0L
     @Volatile private var captureDensityDpi = 0
     @Volatile private var lastSuccessfulFrameMs = 0L
+    @Volatile private var displayListenerRegistered = false
     @Volatile private var lastFrameAcceptedMs = 0L
     @Volatile private var terminalError = false
     private var sessionStartedAtMs = 0L
@@ -68,6 +71,21 @@ class ScreenCaptureService : Service() {
                 ),
             )
             stopSelf()
+        }
+    }
+
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) = Unit
+        override fun onDisplayRemoved(displayId: Int) = Unit
+
+        override fun onDisplayChanged(displayId: Int) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
+            if (displayId != Display.DEFAULT_DISPLAY || stopping) return
+            captureHandler?.post {
+                if (stopping) return@post
+                val dimensions = defaultDisplayDimensions() ?: return@post
+                handleCapturedContentResize(dimensions.first, dimensions.second)
+            }
         }
     }
 
@@ -189,7 +207,22 @@ class ScreenCaptureService : Service() {
             captureHandler,
         ) ?: throw IllegalStateException("Virtual display could not be created.")
 
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val manager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+            manager.registerDisplayListener(displayListener, captureHandler)
+            displayListenerRegistered = true
+        }
         captureHandler?.postDelayed(staleFrameWatchdog, WATCHDOG_INTERVAL_MS)
+    }
+
+    private fun defaultDisplayDimensions(): Pair<Int, Int>? {
+        val manager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        val display = manager.getDisplay(Display.DEFAULT_DISPLAY) ?: return null
+        val metrics = DisplayMetrics()
+        @Suppress("DEPRECATION")
+        display.getRealMetrics(metrics)
+        if (metrics.widthPixels <= 0 || metrics.heightPixels <= 0) return null
+        return metrics.widthPixels to metrics.heightPixels
     }
 
     private fun createImageReader(width: Int, height: Int, generation: Long): ImageReader {
@@ -588,6 +621,13 @@ class ScreenCaptureService : Service() {
     private fun cleanup() {
         synchronized(this) { stopping = true }
         captureHandler?.removeCallbacks(staleFrameWatchdog)
+        if (displayListenerRegistered) {
+            runCatching {
+                (getSystemService(Context.DISPLAY_SERVICE) as DisplayManager)
+                    .unregisterDisplayListener(displayListener)
+            }
+            displayListenerRegistered = false
+        }
         imageReader?.setOnImageAvailableListener(null, null)
         overlayController?.remove()
         overlayController = null

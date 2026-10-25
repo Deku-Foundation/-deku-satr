@@ -39,6 +39,7 @@ A checked box means code or documentation has been added; it does not mean devic
 - [x] Request the default display (not one app window) on Android 14+ while retaining the system consent prompt.
 - [x] Resize/replace the ImageReader surface on MediaProjection size-change callbacks and invalidate old inference generations.
 - [x] Use maximumWindowMetrics on Android 11+ and explicitly declare the activity resizable.
+- [x] Add a DisplayManager size-change fallback for Android 8–13, and unregister it on teardown.
 - [ ] Finish system UI inset and OEM-specific orientation testing on physical devices.
 - [x] Cap normal filter overlay opacity to Android's 0.8 pass-through limit and switch to opaque cover only in fail-closed mode.
 - [ ] Expand tests for the renderer, resource teardown, permission revocation, and stale frames.

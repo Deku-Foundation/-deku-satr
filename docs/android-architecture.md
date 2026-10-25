@@ -79,3 +79,6 @@ On Android 14+ the app requests `MediaProjectionConfig.createConfigForDefaultDis
 The service handles `onCapturedContentResize()` by downscaling new dimensions, invalidating old in-flight inference generations, creating a new bounded ImageReader surface, resizing the existing virtual display, and switching the surface. If resizing fails, the service shows the fail-closed warning and stops. The activity is resizable and uses `maximumWindowMetrics` on Android 11+; legacy display metrics are used only below API 30.
 
 Source: https://developer.android.com/media/grow/media-projection
+
+
+On Android 8–13, where `MediaProjection.Callback.onCapturedContentResize()` is not available, a `DisplayManager.DisplayListener` watches the default display and asks the service to resize the existing virtual display and replace the ImageReader surface. The listener is unregistered during service teardown. Both pathways invalidate older inference generations to avoid painting a mask based on the previous orientation.
