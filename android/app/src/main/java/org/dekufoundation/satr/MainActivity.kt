@@ -605,22 +605,48 @@ private fun MediaPreviewCard(bitmap:Bitmap?,busy:Boolean,message:String,coverage
 }
 
 @Composable
-private fun ProcessingProfileCard(profile:ProcessingProfile,onChange:(ProcessingProfile)->Unit) {
- Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(22.dp),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surface)){
-  Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
-   Text("أداء المعالجة",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
-   listOf(ProcessingProfile.POWER_SAVER to "توفير الطاقة",ProcessingProfile.BALANCED to "متوازن",ProcessingProfile.DETAIL to "تفاصيل أعلى").forEach{(option,label)->
-    Row(verticalAlignment=Alignment.CenterVertically,modifier=Modifier.fillMaxWidth()){
-     Column(Modifier.weight(1f)){
-      Text(label,style=MaterialTheme.typography.bodyLarge,fontWeight=FontWeight.SemiBold)
-      Text(when(option){ProcessingProfile.POWER_SAVER->"480px · حمل أقل، دون تقسيم الإطار";ProcessingProfile.BALANCED->"640px · تقسيم الإطارات الطويلة مع تداخل";ProcessingProfile.DETAIL->"720px · تغطية أدق محتملة، وحمل أعلى"},style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-     }
-     if(option==profile) StatusPill("محدد",MaterialTheme.colorScheme.primaryContainer,MaterialTheme.colorScheme.onPrimaryContainer)
-     else OutlinedButton(onClick={onChange(option)},modifier=Modifier.heightIn(min=48.dp)){Text("اختيار")}
+private fun ProcessingProfileCard(profile: ProcessingProfile, onChange: (ProcessingProfile) -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("أداء المعالجة", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            listOf(
+                ProcessingProfile.LOW_LATENCY to "استجابة أسرع",
+                ProcessingProfile.POWER_SAVER to "توفير الطاقة",
+                ProcessingProfile.BALANCED to "متوازن",
+                ProcessingProfile.DETAIL to "تفاصيل أعلى",
+            ).forEach { (option, label) ->
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            when (option) {
+                                ProcessingProfile.LOW_LATENCY -> "360 px · إطار واحد؛ تفاصيل أقل للأشخاص البعيدين"
+                                ProcessingProfile.POWER_SAVER -> "480 px · دون تقسيم الإطار"
+                                ProcessingProfile.BALANCED -> "640 px · تقسيم الإطار الطويل"
+                                ProcessingProfile.DETAIL -> "720 px · حمل أعلى؛ ليست ضماناً لدقة أكبر"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (option == profile) {
+                        StatusPill("محدد", MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
+                    } else {
+                        OutlinedButton(onClick = { onChange(option) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text("اختيار")
+                        }
+                    }
+                }
+            }
+        }
     }
-   }
-  }
- }
 }
 
 @Composable

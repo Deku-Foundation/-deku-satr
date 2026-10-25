@@ -25,6 +25,13 @@ class CaptureSizePolicyTest {
         assertEquals(CaptureSize(216, 480), CaptureSizePolicy.downsample(1080, 2400, ProcessingProfile.POWER_SAVER.maxEdge))
     }
 
+    @Test fun lowLatencyProfileCapsLongestEdgeAt360Pixels() {
+        assertEquals(
+            CaptureSize(162, 360),
+            CaptureSizePolicy.downsample(1080, 2400, ProcessingProfile.LOW_LATENCY.maxEdge),
+        )
+    }
+
     @Test fun smallDisplayIsNotUpscaled() {
         assertEquals(CaptureSize(320, 500), CaptureSizePolicy.downsample(320, 500))
     }
