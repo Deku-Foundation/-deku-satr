@@ -11,6 +11,10 @@ on:
       - ".github/workflows/android.yml"
   workflow_dispatch:
 
+concurrency:
+  group: deku-satr-${{ github.event.pull_request.head.ref || github.ref_name }}-${{ github.workflow }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
