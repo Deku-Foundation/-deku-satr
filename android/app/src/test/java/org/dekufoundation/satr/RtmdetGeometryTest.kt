@@ -3,6 +3,9 @@ package org.dekufoundation.satr
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertArrayEquals
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import org.junit.Test
 
 class RtmdetGeometryTest {
@@ -35,6 +38,20 @@ class RtmdetGeometryTest {
     @Test
     fun invalidBoxesAreDiscarded() {
         assertNull(RtmdetGeometry.plan(640, 640).toNormalizedBox(400f, 100f, 300f, 200f))
+    }
+
+    @Test
+    fun directBufferMaskSamplingMatchesArraySampling() {
+        val plan = RtmdetGeometry.plan(160, 320)
+        val values = FloatArray(640 * 640) { if (it % 3 == 0) 1f else 0f }
+        val buffer = ByteBuffer.allocateDirect(values.size * Float.SIZE_BYTES)
+            .order(ByteOrder.nativeOrder())
+            .asFloatBuffer()
+        buffer.put(values)
+        buffer.position(0)
+        val fromArray = RtmdetGeometry.sampleMask(values, plan)
+        val fromBuffer = RtmdetGeometry.sampleMask(buffer, 0, plan)
+        assertArrayEquals(fromArray, fromBuffer)
     }
 
     @Test
