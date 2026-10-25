@@ -270,6 +270,9 @@ class ScreenCaptureService : Service() {
                 synchronized(this) {
                     if (stopping) loadedModel.close() else segmenter = loadedModel
                 }
+            } catch (_: OutOfMemoryError) {
+                runCatching { failClosed("نفدت ذاكرة الجهاز أثناء تحميل النموذج؛ أوقفت الجلسة.") }
+                stopSelf()
             } catch (_: Exception) {
                 failClosed("تعذر تحميل نموذج تقسيم الأشخاص؛ أوقفت الجلسة.")
                 publishStartError("تعذر تحميل النموذج؛ لم تُفعّل الفلترة.")
@@ -590,6 +593,11 @@ class ScreenCaptureService : Service() {
                         }
                     }
                     if (!published && !rendered.overlay.isRecycled) rendered.overlay.recycle()
+                } catch (_: OutOfMemoryError) {
+                    if (!stopping && frameGeneration == captureGeneration) {
+                        runCatching { failClosed("نفدت ذاكرة الجهاز أثناء تحليل الإطار؛ أوقفت الجلسة.", frameGeneration) }
+                        stopSelf()
+                    }
                 } catch (_: Exception) {
                     if (!stopping && frameGeneration == captureGeneration) {
                         failClosed("تعذر إنشاء قناع الأشخاص؛ غُطّيت الشاشة احتياطياً.", frameGeneration)
