@@ -141,3 +141,16 @@ Important caveats:
 - The artifact was validated by its publisher with the LiteRT GPU compatibility profile; Satr's own CPU/NNAPI behavior is not yet benchmarked. Inference compatibility and performance must be confirmed on physical devices.
 - Semantic segmentation identifies the person class but does not provide separate per-person masks or gender. Hairstyle, hair length and clothing are not gender ground truth.
 - No 99% claim is supported. CI can prove compilation and unit tests, not model recall or stable full-screen behavior.
+
+
+## Per-person targeting decision (2026-10-25)
+
+The product requirement “men see men, women see women” cannot be met by the current LR-ASPP model: it emits one semantic person mask, not one mask per individual, and has no gender output. Hair length, facial hair, clothing, body shape, and presentation are not dependable labels for gender. A false classification would leave the wrong people visible or blur the wrong people.
+
+A current lightweight instance-segmentation candidate is YOLO26n-seg. The published EdgeFirst TFLite INT8 artifact is about 3.18 MB and the model card reports 33.25% mask mAP@[.5:.95] on COCO val2017 for the Nano FP32 reference. However, the weights remain AGPL-3.0, while the repository's code is MIT; the model card/metadata also has separate CC BY-NC 4.0 terms. It must not be bundled into this app without a deliberate licensing decision and compliance review. Published COCO metrics are not evidence of 99% recall on phone screenshots or videos.
+
+Sources:
+- https://huggingface.co/EdgeFirst/yolo26-seg
+- https://huggingface.co/EdgeFirst/yolo26-seg/tree/main/tflite
+
+Until a compatible instance-segmentation model is selected and validated, the shipped behavior stays “mask all detected people.” The correct next design for selective targeting is instance masks plus explicit user selection or user-defined labels, with temporal tracking between frames. Do not automatically infer gender from appearance. The model must be benchmarked on screen captures including distant people, long-haired men, short-haired women, occlusion, motion, and varied display scaling before enabling selective policies.
