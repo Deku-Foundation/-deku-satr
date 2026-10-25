@@ -330,7 +330,7 @@ class OverlayController(
         private fun recycleAfterDraw(bitmap: Bitmap) {
             // Hardware rendering can still reference the previous frame after invalidate().
             // Delayed release avoids recycling a bitmap while a frame is being composed.
-            mainHandler.postDelayed({
+            postDelayed({
                 if (maskBitmap !== bitmap && !bitmap.isRecycled) bitmap.recycle()
             }, BITMAP_RELEASE_DELAY_MS)
         }
