@@ -5,14 +5,14 @@ Updated: 2026-10-25. Version 0.4.0 contains an embedded segmentation baseline, s
 ## Implemented on this branch
 
 - Kotlin Android app: min SDK 26, compile/target SDK 36, JDK 17, AGP 9.3.0, Gradle 9.5.0.
-- Arabic-first Material 3 UI with Home/Settings destinations, adaptive maximum width, permission state, inference metrics, and locally persisted blur/sensitivity/mask expansion.
+- Arabic-first Material 3 UI with Home/Settings destinations, adaptive maximum width, permission state, inference metrics, and locally persisted effect, strength, sensitivity and mask expansion.
 - Compose UI/Foundation 1.12.1 (stable) with compileSdk 37.
 - Explicit user permission for overlay access and fresh MediaProjection consent for each capture session.
 - A mediaProjection foreground service with persistent notification and immediate stop action.
 - A touch-pass-through transparent full-screen filter overlay and a separate draggable status/stop panel.
 - ML Kit Selfie Segmentation 16.0.0-beta6, bundled at build time; no runtime model download.
-- Frames capped at a longest edge of 640 pixels, a two-image ImageReader, a 250 ms inference throttle, raw-size ML Kit masks, and one in-flight inference task.
-- A CPU two-pass box blur clipped to a thresholded/dilated person mask. Failed inference triggers an opaque fail-closed overlay while the user-accessible stop panel remains visible.
+- Frames capped at a longest edge of 640 pixels, a two-image ImageReader, a 140 ms minimum frame interval, raw-size ML Kit masks, and one in-flight inference task. Frames are dropped rather than queued while inference is busy.
+- A CPU two-pass box blur, block pixelation or solid cover clipped to a thresholded/dilated person mask. Replaced bitmaps are released after a short delay to avoid recycling during rendering. Failed inference triggers an opaque fail-closed overlay while the user-accessible stop panel remains visible.
 - Unit tests for capture scaling, mask thresholding, dilation, and coverage. Android CI builds a debug APK and checks that the merged manifest does not include INTERNET permission.
 
 ## Why this dependency set
@@ -131,7 +131,7 @@ The native UI uses the supplied product palette: deep green `#12372A`, leaf gree
 
 The previous build workflow requested `platforms;android-37`, which the configured SDK repository did not provide and caused CI to stop before Gradle ran. The build now targets the available stable Android 36 platform while using AGP 9.3.0 and Gradle 9.5.0, the documented compatibility pair. Revisit compileSdk 37 when that platform package is available in the CI SDK repository.
 
-For live video, the renderer now retains the last published mask across up to two transient empty/noisy frames and clears it after three consecutive empty frames. This avoids immediately replacing a visible mask with a transparent one on every temporary segmentation miss. Empty masks also bypass full-frame pixel extraction and CPU blur allocations. This is a flicker/performance mitigation, not proof that the separate overlay is excluded from MediaProjection; validate capture feedback and mask stability on physical devices.
+For live video, the renderer reuses the last non-empty confidence mask for at most 650 ms when dimensions match and a fresh mask temporarily collapses to background. The cache resets on session start and display resize. Replaced bitmaps are released after a short delay rather than recycled immediately after invalidation. These changes reduce transient mask flicker but are not temporal tracking and do not prove that the separate overlay is excluded from MediaProjection; validate capture feedback and mask stability on physical devices.
 
 References:
 - AGP 9.3 compatibility table: https://developer.android.com/build/releases/agp-9-3-0-release-notes
