@@ -29,6 +29,13 @@ jobs:
           sed -n '1,240p' model-readme.md
           echo "--- preprocessing and output references ---"
           grep -niE 'preprocess|mean|std|normalize|padding|letterbox|outputs|mask_overlap|score_thr|dets|labels|masks' model-readme.md | head -100 || true
+      - name: Inspect upstream preprocessing and mask NMS implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://huggingface.co/tori29umai/rtmdet-ins-onnx-person-masks/resolve/e5218e8d47d7c50077f27f9893a28e0ef2ad5656"
+          curl --fail --location --retry 3 --connect-timeout 20 --max-time 60 "$base/examples/infer_person_masks.py" -o infer_person_masks.py
+          grep -nE -A24 -B8 'def preprocess|def postprocess|def mask_overlap|resize|normalize|mean|std|pad|letterbox|score_thr|mask_overlap_thr|masks|dets|labels' infer_person_masks.py | head -240
       - name: Download pinned RTMDet-Ins-S and check integrity
         shell: bash
         run: |
