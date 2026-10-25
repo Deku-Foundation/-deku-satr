@@ -42,7 +42,7 @@ Evaluate all models on the same versioned test set and hardware:
 
 ## Technical direction
 
-The default Android profile uses LR-ASPP + MobileNetV3-Large through LiteRT/TFLite Interpreter; RTMDet-Ins-tiny through ONNX Runtime is an optional backend for per-person masks. The model artifact is downloaded during Gradle builds from a pinned revision and checked against SHA-256 before packaging. Live frames and still images share the same engine. This is an experimental integration and has not yet passed a labelled benchmark or real-device test.
+The default Android profile uses LR-ASPP + MobileNetV3-Large through LiteRT/TFLite Interpreter; RTMDet-Ins-S through ONNX Runtime is an optional backend for per-person masks. The model artifact is downloaded during Gradle builds from a pinned revision and checked against SHA-256 before packaging. Live frames and still images share the same engine. This is an experimental integration and has not yet passed a labelled benchmark or real-device test.
 
 ## Native Android research refresh (2026-10-25)
 
@@ -186,7 +186,7 @@ The screen-resize path also respects the selected capture profile instead of sil
 
 ### Instance model candidate
 
-RTMDet-Ins-tiny is a promising next candidate for per-person masks: upstream reports 35.4 mask AP on COCO at 640px, 5.6M parameters and 11.8 GFLOPs. These benchmarks are measured with TensorRT FP16 on an NVIDIA RTX 3090, not an Android phone. LibreYOLO documents Apache-2.0 source and weight redistribution for its specific checkpoints, but the RTMDet-Ins-tiny checkpoint still needs conversion, output-contract validation, and Android benchmarking before replacing the current TFLite model.
+RTMDet-Ins-S is integrated as the optional per-person mask backend: upstream reports 38.7 mask AP on COCO val2017 at 640px, 10.18M parameters and 21.5 GFLOPs. These benchmarks are measured with TensorRT FP16 on an NVIDIA RTX 3090, not an Android phone. The integrated ONNX conversion is pinned under Apache-2.0; its Android latency, memory and thermal behavior still need measurement.
 
 Sources:
 - https://github.com/open-mmlab/mmdetection/blob/main/configs/rtmdet/README.md
@@ -225,7 +225,7 @@ The product requirement is not solved by a generic person mask. The current LR-A
 
 | Candidate | Model footprint | Public benchmark / behavior | License and decision |
 |---|---:|---|---|
-| RTMDet-Ins-tiny, ONNX | ~24 MB | COCO val2017 instance segmentation: mask mAP 35.4; output contains person boxes and individual masks; conversion guide recommends score threshold 0.30 and mask-overlap NMS 0.85 | Apache-2.0. Integrated as an optional manual-targeting backend; lower confidence in crowded scenes than RTMDet-Ins-tiny. Android latency, memory, and thermal behavior remain unmeasured. |
+| RTMDet-Ins-S, ONNX | ~43 MB | COCO val2017 instance segmentation: mask mAP 38.7; output contains person boxes and individual masks; conversion guide recommends score threshold 0.30 and mask-overlap NMS 0.85 | Apache-2.0. Integrated as an optional manual-targeting backend. Android latency, memory, and thermal behavior remain unmeasured. |
 | RTMDet-Ins-Tiny, ONNX | ~23 MB | COCO mask mAP 35.4; fastest variant in that model set, but lower confidence on crowded scenes | Apache-2.0. Fallback candidate for low-memory devices after measuring accuracy and sustained speed. |
 | YOLO26n-seg, TFLite INT8 | ~3.18 MB | EdgeFirst reports COCO mask mAP 33.19 for its Nano reference | We will not bundle in this MIT repository as-is: weights are AGPL-3.0 and the model card/validation assets include CC BY-NC 4.0 terms. |
 | YOLACT-ResNet50, LiteRT | ~125 MB | Per-instance masks; reference graph latency around 41 ms on Pixel 8a GPU | MIT weights, but exceeds the size budget by a large margin. |
@@ -252,10 +252,10 @@ The repository now contains a pure, unit-tested composition policy for per-insta
 
 ## Manual correction workflow (2026-10-25)
 
-The Settings screen now exposes the lightweight semantic model and the optional RTMDet-Ins-tiny instance model. The latter is about 24 MB and yields separate person masks so the user can select which tracked instances to blur or keep visible. A selection is applied during the current live session and follows short-lived track IDs; it is not persistent identity recognition.
+The Settings screen now exposes the lightweight semantic model and the optional RTMDet-Ins-S instance model. The latter is about 43 MB and yields separate person masks so the user can select which tracked instances to blur or keep visible. A selection is applied during the current live session and follows short-lived track IDs; it is not persistent identity recognition.
 
 The user can choose “blur all”, “blur selected only”, or “blur all except selected”. If selected tracks disappear, selected-only mode fails closed to blur all detected instances. This is a manual targeting workflow, not gender recognition. The app does not infer gender from faces, hair, clothes, or body shape. The current correction action changes the target policy; it does not fine-tune or retrain model weights. Actual online learning would need an explicit opt-in, a carefully designed local training dataset, deletion controls, and on-device compute evaluation.
 
-RTMDet-Ins-tiny is smaller than the S variant (~24 MB vs ~41 MB) but the upstream model card reports lower mask mAP (35.4 vs 38.7) and lower confidence in crowded scenes. Published metrics use COCO and must not be interpreted as recall on phone screenshots. No 99% accuracy claim is made.
+RTMDet-Ins-tiny remains a smaller future option (~24 MB; COCO mask mAP 35.4) if device testing shows the S variant is too heavy. The S variant is currently selected for its stronger published COCO mask mAP (38.7). Published metrics use COCO and must not be interpreted as recall on phone screenshots. No 99% accuracy claim is made.
 
 Source: https://huggingface.co/tori29umai/rtmdet-ins-onnx-person-masks
