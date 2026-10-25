@@ -187,8 +187,9 @@ class ScreenCaptureService : Service() {
         check(overlayController?.show() == true) {
             "The user-visible overlay could not be shown."
         }
-        // Keep the display covered while the quantized model is loaded off the main thread.
-        failClosed("يجري تحميل نموذج تقسيم الأشخاص؛ ستبدأ الفلترة بعد جاهزيته.")
+        // The compact indicator warns that filtering is not active until the first successful mask.
+        // Avoid displaying an opaque placeholder while the model warms up.
+        overlayController?.showPreparing("يجري تحميل النموذج؛ لم تبدأ الفلترة بعد.")
 
         inferenceExecutor = Executors.newSingleThreadExecutor { runnable ->
             Thread(runnable, "DekuSatrInference").apply { isDaemon = true }
@@ -364,7 +365,7 @@ class ScreenCaptureService : Service() {
             worker.execute {
                 try {
                     if (stopping || frameGeneration != captureGeneration) return@execute
-                    val mask = currentSegmenter.process(frame, FilterSettings.processingProfile.tileWideFrames)
+                    val mask = currentSegmenter.process(frame, tileWideFrames = FilterSettings.processingProfile.tileWideFrames)
                     if (stopping || frameGeneration != captureGeneration) return@execute
                     val frameNow = SystemClock.elapsedRealtime()
                     val freshValues = synchronized(this) {
