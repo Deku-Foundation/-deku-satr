@@ -171,6 +171,8 @@ class ScreenCaptureService : Service() {
 
     private fun applyTargetUpdate(command: Intent?) {
         if (projection == null || stopping || activePersonModelProfile != PersonModelProfile.RTMDET_INS_S) {
+            FilterSettings.personTargetMode = PersonTargetMode.MASK_ALL
+            FilterSettings.selectedPersonTrackIds = emptySet()
             SessionStatus.update { current ->
                 current.copy(
                     detail = "لتحديد أشخاص منفردين، اختر نموذج التقسيم الفردي ثم ابدأ جلسة جديدة.",
@@ -206,7 +208,7 @@ class ScreenCaptureService : Service() {
         }
         SessionStatus.update { current ->
             current.copy(
-                detail = if (safeMode == PersonTargetMode.MASK_SELECTED_ONLY && requestedIds.isEmpty()) {
+                detail = if (requestedMode == PersonTargetMode.MASK_SELECTED_ONLY && requestedIds.isEmpty()) {
                     "لم تحدد أي شخص؛ عادت الحماية إلى طمس الجميع."
                 } else {
                     "تم تحديث اختيار الأشخاص يدوياً. هذا لا يعيد تدريب أوزان النموذج."
