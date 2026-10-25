@@ -35,7 +35,7 @@ class ScreenCaptureService : Service() {
     private var captureThread: HandlerThread? = null
     private var captureHandler: Handler? = null
     private var overlayController: OverlayController? = null
-    private var segmenter: LrasppPersonSegmenter? = null
+    @Volatile private var segmenter: LrasppPersonSegmenter? = null
     private var inferenceExecutor: ExecutorService? = null
     private val inferenceBusy = AtomicBoolean(false)
 
@@ -185,10 +185,30 @@ class ScreenCaptureService : Service() {
         check(overlayController?.show() == true) {
             "The user-visible overlay could not be shown."
         }
+        // Keep the display covered while the quantized model is loaded off the main thread.
+        failClosed("يجري تحميل نموذج تقسيم الأشخاص؛ ستبدأ الفلترة بعد جاهزيته.")
 
-        segmenter = LrasppPersonSegmenter(this)
         inferenceExecutor = Executors.newSingleThreadExecutor { runnable ->
             Thread(runnable, "DekuSatrInference").apply { isDaemon = true }
+        }
+        val modelExecutor = inferenceExecutor
+            ?: throw IllegalStateException("The inference executor could not be created.")
+        modelExecutor.execute {
+            try {
+                val loadedModel = LrasppPersonSegmenter(applicationContext)
+                synchronized(this) {
+                    if (stopping) loadedModel.close() else segmenter = loadedModel
+                }
+            } catch (_: Exception) {
+                failClosed("تعذر تحميل نموذج تقسيم الأشخاص؛ أوقفت الجلسة.")
+                SessionStatus.publish(
+                    SatrSessionSnapshot(
+                        phase = SatrPhase.ERROR,
+                        detail = "تعذر تحميل النموذج؛ لم تُفعّل الفلترة.",
+                    ),
+                )
+                stopSelf()
+            }
         }
 
         captureThread = HandlerThread("DekuSatrCapture").apply { start() }
@@ -329,7 +349,13 @@ class ScreenCaptureService : Service() {
 
         val worker = inferenceExecutor
         val currentSegmenter = segmenter
-        if (worker == null || currentSegmenter == null) {
+        if (currentSegmenter == null) {
+            // Startup has already installed an opaque fail-closed overlay; drop frames until ready.
+            frame.recycle()
+            inferenceBusy.set(false)
+            return
+        }
+        if (worker == null) {
             frame.recycle()
             inferenceBusy.set(false)
             failClosed("محرك تقسيم الأشخاص غير متاح؛ غُطّيت الشاشة احتياطياً.", frameGeneration)
