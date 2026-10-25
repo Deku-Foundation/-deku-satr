@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
@@ -11,8 +12,9 @@ android {
         applicationId = "org.dekufoundation.satr"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
+
         testInstrumentationRunner = "android.test.runner.AndroidJUnitRunner"
     }
 
@@ -24,6 +26,10 @@ android {
                 "proguard-rules.pro",
             )
         }
+    }
+
+    buildFeatures {
+        compose = true
     }
 
     compileOptions {
@@ -43,5 +49,14 @@ kotlin {
 }
 
 dependencies {
+    implementation("androidx.activity:activity-compose:1.13.0")
+    implementation("androidx.compose.foundation:foundation:1.12.1")
+    implementation("androidx.compose.material3:material3:1.4.0")
+    implementation("androidx.compose.ui:ui:1.12.1")
+    implementation("androidx.compose.ui:ui-tooling-preview:1.12.1")
+
+    // Bundled in the installed APK; no model download is needed at runtime.
+    implementation("com.google.mlkit:segmentation-selfie:16.0.0-beta6")
+
     testImplementation("junit:junit:4.13.2")
 }
