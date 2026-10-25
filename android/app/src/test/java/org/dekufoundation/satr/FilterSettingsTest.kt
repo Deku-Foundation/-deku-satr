@@ -23,6 +23,16 @@ class FilterSettingsTest {
     }
 
     @Test
+    fun privacyEffectCanBeSelectedAndReset() {
+        FilterSettings.effect = PrivacyEffect.PIXELATE
+        assertEquals(PrivacyEffect.PIXELATE, FilterSettings.effect)
+        FilterSettings.effect = PrivacyEffect.COVER
+        assertEquals(PrivacyEffect.COVER, FilterSettings.effect)
+        FilterSettings.resetToDefaults()
+        assertEquals(PrivacyEffect.BLUR, FilterSettings.effect)
+    }
+
+    @Test
     fun maskExpansionIsBounded() {
         FilterSettings.maskExpansionRadius = -4
         assertEquals(0, FilterSettings.maskExpansionRadius)
