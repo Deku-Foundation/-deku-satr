@@ -20,6 +20,7 @@ object PrivacyRenderer {
         maskHeight: Int,
         threshold: Float = 0.48f,
         blurRadius: Int = FilterSettings.blurRadius,
+        maskExpansionRadius: Int = FilterSettings.maskExpansionRadius,
     ): RenderedPrivacyMask {
         val maskPixelCount = maskWidth.toLong() * maskHeight.toLong()
         require(
@@ -43,8 +44,8 @@ object PrivacyRenderer {
             width = maskWidth,
             height = maskHeight,
             threshold = threshold,
-            radiusX = 2,
-            radiusY = 2,
+            radiusX = maskExpansionRadius.coerceIn(0, 6),
+            radiusY = maskExpansionRadius.coerceIn(0, 6),
         )
         val coverage = PersonMaskMath.coveragePercent(binary)
 

@@ -54,6 +54,8 @@ class ScreenCaptureService : Service() {
     @Volatile private var lastFrameAcceptedMs = 0L
     @Volatile private var terminalError = false
     private var sessionStartedAtMs = 0L
+    private var personFramesInARow = 0
+    private var emptyFramesInARow = 0
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onCapturedContentResize(width: Int, height: Int) {
@@ -166,6 +168,7 @@ class ScreenCaptureService : Service() {
     ) {
         stopping = false
         terminalError = false
+        synchronized(this) { personFramesInARow = 0; emptyFramesInARow = 0 }
         inferenceBusy.set(false)
         lastFrameAcceptedMs = 0L
         lastSuccessfulFrameMs = SystemClock.elapsedRealtime()
@@ -180,6 +183,7 @@ class ScreenCaptureService : Service() {
 
         val options = SelfieSegmenterOptions.Builder()
             .setDetectorMode(SelfieSegmenterOptions.STREAM_MODE)
+            .enableRawSizeMask()
             .build()
         segmenter = Segmentation.getClient(options)
         inferenceExecutor = Executors.newSingleThreadExecutor { runnable ->
@@ -316,16 +320,6 @@ class ScreenCaptureService : Service() {
             return
         }
 
-        if (isNearUniformBlack(frame)) {
-            frame.recycle()
-            inferenceBusy.set(false)
-            if (stopping) closeSegmenterIfSafe()
-            else if (frameGeneration == captureGeneration) {
-                failClosed("لم تصل صورة شاشة قابلة للتحليل؛ غُطّيت الشاشة احتياطياً.", frameGeneration)
-            }
-            return
-        }
-
         val startedAt = SystemClock.elapsedRealtime()
         try {
             val input = InputImage.fromBitmap(frame, 0)
@@ -365,6 +359,8 @@ class ScreenCaptureService : Service() {
                                     maskWidth = mask.width,
                                     maskHeight = mask.height,
                                     blurRadius = FilterSettings.blurRadius,
+                                    threshold = FilterSettings.confidenceThreshold,
+                                    maskExpansionRadius = FilterSettings.maskExpansionRadius,
                                 )
                                 val activeOverlay = overlayController
                                 if (activeOverlay == null) {
@@ -377,13 +373,25 @@ class ScreenCaptureService : Service() {
                                 synchronized(this) {
                                     if (!stopping && frameGeneration == captureGeneration) {
                                         val previous = SessionStatus.current()
-                                        val detected = rendered.coveragePercent > MIN_PERSON_COVERAGE_PERCENT
+                                        val detectedNow = rendered.coveragePercent > MIN_PERSON_COVERAGE_PERCENT
+                                        if (detectedNow) {
+                                            personFramesInARow = (personFramesInARow + 1).coerceAtMost(3)
+                                            emptyFramesInARow = 0
+                                        } else {
+                                            emptyFramesInARow = (emptyFramesInARow + 1).coerceAtMost(4)
+                                            personFramesInARow = 0
+                                        }
+                                        val detected = if (previous.phase == SatrPhase.FILTERING) {
+                                            emptyFramesInARow < 3
+                                        } else {
+                                            personFramesInARow >= 2
+                                        }
                                         val next = previous.copy(
                                             phase = if (detected) SatrPhase.FILTERING else SatrPhase.NO_PERSON_DETECTED,
                                             detail = if (detected) {
-                                                "تمويه تجريبي مطبّق على المنطقة التي رصدها النموذج."
+                                                "يُطبّق التمويه على المناطق التي يرصدها النموذج."
                                             } else {
-                                                "لم يرصد النموذج شخصاً بوضوح؛ قد يفوّت أشخاصاً صغيرين أو بعيدين."
+                                                "لم تُرصد منطقة شخص بوضوح؛ قد يفوّت النموذج الأجسام الصغيرة."
                                             },
                                             processedFrames = previous.processedFrames + 1,
                                             lastInferenceMs = latencyMs,
@@ -488,24 +496,6 @@ class ScreenCaptureService : Service() {
                 bitmap.recycle()
                 throw error
             }
-        }
-    }
-
-    private fun isNearUniformBlack(bitmap: Bitmap): Boolean {
-        val width = bitmap.width
-        val height = bitmap.height
-        if (width <= 0 || height <= 0) return true
-        val samples = intArrayOf(
-            bitmap.getPixel(width / 2, height / 2),
-            bitmap.getPixel(width / 4, height / 4),
-            bitmap.getPixel(width * 3 / 4, height / 4),
-            bitmap.getPixel(width / 4, height * 3 / 4),
-            bitmap.getPixel(width * 3 / 4, height * 3 / 4),
-        )
-        return samples.all { pixel ->
-            (pixel ushr 16 and 0xFF) < 8 &&
-                (pixel ushr 8 and 0xFF) < 8 &&
-                (pixel and 0xFF) < 8
         }
     }
 
@@ -693,7 +683,7 @@ class ScreenCaptureService : Service() {
         private const val STOP_PENDING_INTENT_REQUEST = 411
         private const val MAX_IMAGES = 2
         private const val MIN_FRAME_INTERVAL_MS = 250L
-        private const val STALE_FRAME_LIMIT_MS = 1_500L
+        private const val STALE_FRAME_LIMIT_MS = 3_500L
         private const val WATCHDOG_INTERVAL_MS = 500L
         private const val MAX_MASK_PIXELS = 2_000_000
         private const val MAX_FRAME_PIXELS = 500_000

@@ -10,6 +10,9 @@ import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.DisplayMetrics
 import android.view.WindowManager
@@ -50,6 +53,9 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -63,6 +69,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -85,7 +92,16 @@ class MainActivity : ComponentActivity() {
     private var overlayAllowed by mutableStateOf(false)
     private var notificationsAllowed by mutableStateOf(true)
     private var unsubscribeStatus: (() -> Unit)? = null
-    private var postPermissionContinuation: (() -> Unit)? = null
+    private var pendingUiSnapshot: SatrSessionSnapshot? = null
+    private var uiFlushScheduled = false
+    private var lastUiRenderMs = 0L
+    private val uiHandler = Handler(Looper.getMainLooper())
+    private val flushPendingSnapshot = Runnable {
+        uiFlushScheduled = false
+        pendingUiSnapshot?.let { snapshot = it }
+        pendingUiSnapshot = null
+        lastUiRenderMs = SystemClock.elapsedRealtime()
+    }
 
     private val captureLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -102,25 +118,10 @@ class MainActivity : ComponentActivity() {
             startCaptureService(result.resultCode, data)
         }
 
-    private val notificationPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            notificationsAllowed = granted || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
-            if (granted) {
-                postPermissionContinuation?.invoke()
-            } else {
-                SessionStatus.publish(
-                    SatrSessionSnapshot(
-                        phase = SatrPhase.WAITING_PERMISSION,
-                        detail = "يحتاج التطبيق إلى مؤشر إشعار ظاهر حتى تتمكن من إيقاف الجلسة.",
-                    ),
-                )
-            }
-            postPermissionContinuation = null
-        }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        FilterSettings.initialize(applicationContext)
         overlayAllowed = Settings.canDrawOverlays(this)
         notificationsAllowed =
             Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
@@ -134,6 +135,8 @@ class MainActivity : ComponentActivity() {
                         overlayAllowed = overlayAllowed,
                         notificationsAllowed = notificationsAllowed,
                         onGrantOverlay = ::requestOverlayPermission,
+                        onOpenNotificationSettings = ::openNotificationSettings,
+                        onSaveFilterSettings = ::saveFilterSettings,
                         onStart = ::beginCaptureFlow,
                         onStop = ::requestStop,
                     )
@@ -144,14 +147,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        unsubscribeStatus = SessionStatus.subscribe { value ->
-            runOnUiThread { snapshot = value }
-        }
+        unsubscribeStatus = SessionStatus.subscribe(::publishSnapshotToUi)
     }
 
     override fun onStop() {
         unsubscribeStatus?.invoke()
         unsubscribeStatus = null
+        uiHandler.removeCallbacks(flushPendingSnapshot)
+        uiFlushScheduled = false
+        pendingUiSnapshot = null
         super.onStop()
     }
 
@@ -163,6 +167,50 @@ class MainActivity : ComponentActivity() {
                 checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
     }
 
+    private fun publishSnapshotToUi(value: SatrSessionSnapshot) {
+        uiHandler.post {
+            val now = SystemClock.elapsedRealtime()
+            val current = snapshot
+            val phaseOrErrorChanged = value.phase != current.phase ||
+                value.detail != current.detail ||
+                value.modelReady != current.modelReady
+
+            if (phaseOrErrorChanged || now - lastUiRenderMs >= UI_METRICS_REFRESH_MS) {
+                uiHandler.removeCallbacks(flushPendingSnapshot)
+                uiFlushScheduled = false
+                pendingUiSnapshot = null
+                snapshot = value
+                lastUiRenderMs = now
+                return@post
+            }
+
+            pendingUiSnapshot = value
+            if (!uiFlushScheduled) {
+                uiFlushScheduled = true
+                val delay = (UI_METRICS_REFRESH_MS - (now - lastUiRenderMs)).coerceAtLeast(1L)
+                uiHandler.postDelayed(flushPendingSnapshot, delay)
+            }
+        }
+    }
+
+    private fun saveFilterSettings() {
+        FilterSettings.persist(this)
+    }
+
+    private fun openNotificationSettings() {
+        val notificationIntent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+            putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+        }
+        runCatching { startActivity(notificationIntent) }
+            .onFailure {
+                runCatching {
+                    startActivity(
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")),
+                    )
+                }
+            }
+    }
+
     private fun requestOverlayPermission() {
         if (Settings.canDrawOverlays(this)) {
             overlayAllowed = true
@@ -170,8 +218,8 @@ class MainActivity : ComponentActivity() {
         }
         SessionStatus.publish(
             SatrSessionSnapshot(
-                phase = SatrPhase.WAITING_PERMISSION,
-                detail = "اسمح بالنافذة العائمة ثم ارجع واضغط بدء الجلسة.",
+                phase = SatrPhase.STOPPED,
+                detail = "فعّل إذن النافذة العائمة ثم ارجع واضغط بدء التمويه.",
             ),
         )
         val permissionIntent = Intent(
@@ -190,15 +238,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun beginCaptureFlow() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            postPermissionContinuation = ::beginCaptureFlow
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            return
-        }
-        notificationsAllowed = true
+        notificationsAllowed =
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
+        // POST_NOTIFICATIONS is not a prerequisite for MediaProjection/foreground-service startup.
+        // If denied, Android may omit the drawer entry; keep the in-app/overlay Stop controls.
         if (!Settings.canDrawOverlays(this)) {
             requestOverlayPermission()
             return
@@ -274,10 +319,14 @@ class MainActivity : ComponentActivity() {
             SessionStatus.publish(
                 SatrSessionSnapshot(
                     phase = SatrPhase.ERROR,
-                    detail = "تعذر إرسال أمر الإيقاف؛ أوقف مشاركة الشاشة من إشعار Android أيضاً.",
+                    detail = "تعذر إرسال أمر الإيقاف؛ استخدم زر الإيقاف العائم أو إشعار Android.",
                 ),
             )
         }
+    }
+
+    private companion object {
+        const val UI_METRICS_REFRESH_MS = 900L
     }
 }
 
@@ -333,6 +382,8 @@ private fun SatrDashboard(
     overlayAllowed: Boolean,
     notificationsAllowed: Boolean,
     onGrantOverlay: () -> Unit,
+    onOpenNotificationSettings: () -> Unit,
+    onSaveFilterSettings: () -> Unit,
     onStart: () -> Unit,
     onStop: () -> Unit,
 ) {
@@ -342,57 +393,125 @@ private fun SatrDashboard(
         SatrPhase.NO_PERSON_DETECTED,
         SatrPhase.FAIL_CLOSED,
     )
-    var blurStrength by remember { mutableFloatStateOf(FilterSettings.blurRadius.toFloat()) }
+    var selectedTab by rememberSaveable { mutableStateOf(0) }
+    var blurStrength by rememberSaveable { mutableFloatStateOf(FilterSettings.blurStrengthPercent.toFloat()) }
+    var confidenceThreshold by rememberSaveable { mutableFloatStateOf(FilterSettings.confidenceThreshold) }
+    var maskExpansion by rememberSaveable { mutableFloatStateOf(FilterSettings.maskExpansionRadius.toFloat()) }
     val scrollState = rememberScrollState()
 
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background,
-    ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.TopCenter,
-        ) {
-            Column(
-                modifier = Modifier
-                    .widthIn(max = 680.dp)
-                    .fillMaxWidth()
-                    .windowInsetsPadding(WindowInsets.statusBars.only(WindowInsetsSides.Top))
-                    .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom))
-                    .verticalScroll(scrollState)
-                    .padding(horizontal = 18.dp)
-                    .padding(top = 12.dp, bottom = 28.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            bottomBar = {
+                NavigationBar {
+                    NavigationBarItem(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        icon = { Text("⌂", style = MaterialTheme.typography.titleLarge) },
+                        label = { Text("الرئيسية") },
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        icon = { Text("⚙︎", style = MaterialTheme.typography.titleLarge) },
+                        label = { Text("الإعدادات") },
+                    )
+                }
+            },
+        ) { contentPadding ->
+            Box(
+                modifier = Modifier.fillMaxSize().padding(contentPadding),
+                contentAlignment = Alignment.TopCenter,
             ) {
-                SatrHeader()
-                HeroPanel()
-                SessionCard(snapshot)
-                ControlCard(
-                    running = running,
-                    snapshot = snapshot,
-                    blurStrength = blurStrength,
-                    onBlurStrengthChange = {
-                        blurStrength = it
-                        FilterSettings.blurRadius = it.roundToInt()
-                    },
-                    onStart = onStart,
-                    onStop = onStop,
-                )
-                PermissionsCard(
-                    overlayAllowed = overlayAllowed,
-                    notificationsAllowed = notificationsAllowed,
-                    onGrantOverlay = onGrantOverlay,
-                )
-                ModelCard(snapshot)
-                SafetyCard()
-                HowItWorksCard()
-                Text(
-                    text = "دِكو سَتر · معالجة محلية · إصدار تجريبي 0.3.0",
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                )
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 680.dp)
+                        .fillMaxWidth()
+                        .windowInsetsPadding(WindowInsets.statusBars.only(WindowInsetsSides.Top))
+                        .verticalScroll(scrollState)
+                        .padding(horizontal = 18.dp)
+                        .padding(top = 12.dp, bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    SatrHeader()
+                    if (selectedTab == 0) {
+                        Text(
+                            "الرئيسية",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground,
+                        )
+                        HeroPanel()
+                        SessionCard(snapshot)
+                        ControlCard(
+                            running = running,
+                            waitingForPermission = snapshot.phase == SatrPhase.WAITING_PERMISSION,
+                            onStart = onStart,
+                            onStop = onStop,
+                        )
+                        Text(
+                            "تُعالج الإطارات على الهاتف. لا تُحفظ لقطات الشاشة.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Center,
+                        )
+                    } else {
+                        Text(
+                            "الإعدادات",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground,
+                        )
+                        Text(
+                            "اضبط قوة التمويه وحساسية القناع. تُطبّق التغييرات على الإطار التالي.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        FilterSettingsCard(
+                            blurStrength = blurStrength,
+                            onBlurStrengthChange = {
+                                blurStrength = it
+                                FilterSettings.blurStrengthPercent = it.roundToInt()
+                            },
+                            confidenceThreshold = confidenceThreshold,
+                            onConfidenceThresholdChange = {
+                                confidenceThreshold = it
+                                FilterSettings.confidenceThreshold = it
+                            },
+                            maskExpansion = maskExpansion,
+                            onMaskExpansionChange = {
+                                maskExpansion = it
+                                FilterSettings.maskExpansionRadius = it.roundToInt()
+                            },
+                            onSave = onSaveFilterSettings,
+                            onReset = {
+                                FilterSettings.resetToDefaults()
+                                blurStrength = FilterSettings.blurStrengthPercent.toFloat()
+                                confidenceThreshold = FilterSettings.confidenceThreshold
+                                maskExpansion = FilterSettings.maskExpansionRadius.toFloat()
+                                onSaveFilterSettings()
+                            },
+                        )
+                        TargetScopeCard()
+                        PermissionsCard(
+                            overlayAllowed = overlayAllowed,
+                            notificationsAllowed = notificationsAllowed,
+                            onGrantOverlay = onGrantOverlay,
+                            onOpenNotificationSettings = onOpenNotificationSettings,
+                        )
+                        ModelCard(snapshot)
+                        SafetyCard()
+                        HowItWorksCard()
+                    }
+                    Text(
+                        "دِكو سَتر · أداة تجريبية للخصوصية البصرية · 0.4.0",
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
         }
     }
@@ -637,9 +756,7 @@ private fun MetricCard(modifier: Modifier = Modifier, label: String, value: Stri
 @Composable
 private fun ControlCard(
     running: Boolean,
-    snapshot: SatrSessionSnapshot,
-    blurStrength: Float,
-    onBlurStrengthChange: (Float) -> Unit,
+    waitingForPermission: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit,
 ) {
@@ -648,59 +765,69 @@ private fun ControlCard(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Text("التحكم بالفلترة", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("التحكم بالجلسة", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(
-                "ابدأ من هنا، وستظل نافذة الإيقاف ظاهرة فوق التطبيقات أثناء الجلسة.",
-                style = MaterialTheme.typography.bodySmall,
+                "ابدأ الجلسة بعد تفعيل النافذة العائمة وموافقة Android على مشاركة الشاشة.",
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                lineHeight = 20.sp,
+                lineHeight = 21.sp,
             )
-
-            if (!running) {
-                Button(
-                    onClick = onStart,
-                    modifier = Modifier.fillMaxWidth().height(54.dp),
-                    shape = RoundedCornerShape(17.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                    ),
-                ) {
-                    ShieldGlyph(Modifier.size(19.dp), MaterialTheme.colorScheme.onPrimary)
-                    Spacer(Modifier.width(10.dp))
-                    Text("بدء الجلسة التجريبية", fontWeight = FontWeight.Bold)
-                }
-            } else {
+            if (running) {
                 Button(
                     onClick = onStop,
-                    modifier = Modifier.fillMaxWidth().height(54.dp),
-                    shape = RoundedCornerShape(17.dp),
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error,
                         contentColor = MaterialTheme.colorScheme.onError,
                     ),
                 ) {
-                    Text("إيقاف الجلسة الآن", fontWeight = FontWeight.Bold)
+                    Text("إيقاف الجلسة", fontWeight = FontWeight.Bold)
+                }
+            } else {
+                Button(
+                    onClick = onStart,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    enabled = !waitingForPermission,
+                ) {
+                    ShieldGlyph(Modifier.size(19.dp), MaterialTheme.colorScheme.onPrimary)
+                    Spacer(Modifier.width(10.dp))
+                    Text(if (waitingForPermission) "بانتظار موافقة Android…" else "بدء التمويه", fontWeight = FontWeight.Bold)
                 }
             }
+            Text(
+                "يمكن إيقاف الجلسة من هنا أو من اللوحة العائمة.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Column {
-                    Text("قوة التمويه", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                    Text("تُطبّق عند الإطار التالي", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+@Composable
+private fun FilterSettingsCard(
+    blurStrength: Float,
+    onBlurStrengthChange: (Float) -> Unit,
+    confidenceThreshold: Float,
+    onConfidenceThresholdChange: (Float) -> Unit,
+    maskExpansion: Float,
+    onMaskExpansionChange: (Float) -> Unit,
+    onSave: () -> Unit,
+    onReset: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("قوة التمويه", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("قوة التمويه", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                 StatusPill(
-                    label = blurStrength.roundToInt().toString(),
+                    label = "${blurStrength.roundToInt()}%",
                     container = MaterialTheme.colorScheme.primaryContainer,
                     foreground = MaterialTheme.colorScheme.onPrimaryContainer,
                 )
@@ -708,15 +835,83 @@ private fun ControlCard(
             Slider(
                 value = blurStrength,
                 onValueChange = onBlurStrengthChange,
-                valueRange = FilterSettings.MIN_BLUR_RADIUS.toFloat()..FilterSettings.MAX_BLUR_RADIUS.toFloat(),
-                steps = FilterSettings.MAX_BLUR_RADIUS - FilterSettings.MIN_BLUR_RADIUS - 1,
-                enabled = running,
+                valueRange = 10f..100f,
+                steps = 8,
+                onValueChangeFinished = onSave,
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("حساسية اكتشاف الأشخاص", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                StatusPill(
+                    label = "${(confidenceThreshold * 100).roundToInt()}%",
+                    container = MaterialTheme.colorScheme.secondaryContainer,
+                    foreground = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            }
+            Slider(
+                value = confidenceThreshold,
+                onValueChange = onConfidenceThresholdChange,
+                valueRange = FilterSettings.MIN_CONFIDENCE_THRESHOLD..FilterSettings.MAX_CONFIDENCE_THRESHOLD,
+                steps = 9,
+                onValueChangeFinished = onSave,
             )
             Text(
-                if (running) "تُحدّث القوة في الذاكرة ولا تحفظ لقطات الشاشة."
-                else "يمكن ضبط القوة أثناء الجلسة بعد منح الأذونات.",
+                "الحساسية الأقل قد تشمل مساحة أكبر من الخلفية؛ الحساسية الأعلى قد تفوّت أجزاء من الشخص.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                lineHeight = 19.sp,
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("توسيع حواف القناع", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                StatusPill(
+                    label = "${maskExpansion.roundToInt()} px",
+                    container = MaterialTheme.colorScheme.surfaceVariant,
+                    foreground = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Slider(
+                value = maskExpansion,
+                onValueChange = onMaskExpansionChange,
+                valueRange = 0f..6f,
+                steps = 5,
+                onValueChangeFinished = onSave,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(
+                    onClick = onReset,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    shape = RoundedCornerShape(14.dp),
+                ) { Text("إعادة الضبط") }
+                Button(
+                    onClick = onSave,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    shape = RoundedCornerShape(14.dp),
+                ) { Text("حفظ الإعدادات") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TargetScopeCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("نطاق التمويه", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            StatusPill(
+                label = "كل الأشخاص",
+                container = MaterialTheme.colorScheme.primaryContainer,
+                foreground = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+            Text(
+                "النموذج الحالي يرسم قناعاً للأشخاص ولا يصنّف الجنس. طول الشعر والملابس ليسا دليلاً موثوقاً على الجنس؛ لذلك لا يوجد خيار إخفاء انتقائي قبل اختبار نموذج منفصل ومعدلات أخطائه.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                lineHeight = 21.sp,
             )
         }
     }
@@ -727,41 +922,44 @@ private fun PermissionsCard(
     overlayAllowed: Boolean,
     notificationsAllowed: Boolean,
     onGrantOverlay: () -> Unit,
+    onOpenNotificationSettings: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text("الأذونات والخصوصية", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("الأذونات", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             PermissionLine(
                 title = "النافذة العائمة",
-                detail = if (overlayAllowed) "مسموح بها" else "يلزم السماح من إعدادات Android",
+                detail = if (overlayAllowed) "مسموح" else "يلزم تفعيلها لإظهار القناع فوق التطبيقات",
                 granted = overlayAllowed,
             )
             PermissionLine(
-                title = "إشعار الجلسة",
-                detail = if (notificationsAllowed) "مسموح أو غير مطلوب على هذا الإصدار" else "يلزم السماح لإظهار الإيقاف",
+                title = "إشعارات الجلسة",
+                detail = if (notificationsAllowed) "مسموحة" else "اختيارية لبدء الجلسة، لكن الإشعار قد لا يظهر في درج الإشعارات",
                 granted = notificationsAllowed,
             )
             PermissionLine(
-                title = "التقاط الشاشة",
-                detail = "يطلب Android موافقتك عند بدء كل جلسة",
+                title = "مشاركة الشاشة",
+                detail = "تظهر موافقة Android عند بدء كل جلسة",
                 granted = false,
                 neutral = true,
             )
             if (!overlayAllowed) {
                 OutlinedButton(
                     onClick = onGrantOverlay,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
                     shape = RoundedCornerShape(15.dp),
-                ) {
-                    Text("السماح بالنافذة العائمة")
-                }
+                ) { Text("فتح إعداد النافذة العائمة") }
+            }
+            if (!notificationsAllowed) {
+                OutlinedButton(
+                    onClick = onOpenNotificationSettings,
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(15.dp),
+                ) { Text("فتح إعدادات الإشعارات") }
             }
         }
     }
