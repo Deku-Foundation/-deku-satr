@@ -38,6 +38,7 @@ class ScreenCaptureService : Service() {
     @Volatile private var segmenter: LrasppPersonSegmenter? = null
     private var inferenceExecutor: ExecutorService? = null
     private val inferenceBusy = AtomicBoolean(false)
+    private val temporalMaskSmoother = TemporalMaskSmoother()
 
     @Volatile private var projectionStopped = false
     @Volatile private var stopping = false
@@ -173,6 +174,7 @@ class ScreenCaptureService : Service() {
             lastGoodMaskWidth = 0
             lastGoodMaskHeight = 0
             lastGoodMaskAtMs = 0L
+            temporalMaskSmoother.reset()
         }
         inferenceBusy.set(false)
         lastFrameAcceptedMs = 0L
@@ -258,7 +260,7 @@ class ScreenCaptureService : Service() {
         if (stopping || contentWidth <= 0 || contentHeight <= 0) return
         val oldReader = imageReader ?: return
         val size = try {
-            CaptureSizePolicy.downsample(contentWidth, contentHeight)
+            CaptureSizePolicy.downsample(contentWidth, contentHeight, FilterSettings.processingProfile.maxEdge)
         } catch (_: IllegalArgumentException) {
             failClosed("تعذر تحديد أبعاد الشاشة الجديدة.")
             stopSelf()
@@ -274,6 +276,7 @@ class ScreenCaptureService : Service() {
             lastGoodMaskWidth = 0
             lastGoodMaskHeight = 0
             lastGoodMaskAtMs = 0L
+            temporalMaskSmoother.reset()
         }
         failClosed("تغيّر اتجاه الشاشة أو حجمها؛ يجري ضبط الفلترة مجدداً.")
 
@@ -362,7 +365,16 @@ class ScreenCaptureService : Service() {
                 try {
                     if (stopping || frameGeneration != captureGeneration) return@execute
                     val mask = currentSegmenter.process(frame, FilterSettings.processingProfile.tileWideFrames)
-                    val freshValues = mask.confidence
+                    if (stopping || frameGeneration != captureGeneration) return@execute
+                    val frameNow = SystemClock.elapsedRealtime()
+                    val freshValues = synchronized(this) {
+                        temporalMaskSmoother.smooth(
+                            current = mask.confidence,
+                            width = mask.width,
+                            height = mask.height,
+                            timestampMs = frameNow,
+                        )
+                    }
                     val threshold = FilterSettings.confidenceThreshold
                     val expansion = FilterSettings.maskExpansionRadius
                     val freshCoverage = PersonMaskMath.coveragePercent(
@@ -375,7 +387,6 @@ class ScreenCaptureService : Service() {
                             radiusY = expansion,
                         ),
                     )
-                    val frameNow = SystemClock.elapsedRealtime()
                     val values = synchronized(this) {
                         if (freshCoverage > MIN_PERSON_COVERAGE_PERCENT) {
                             lastGoodConfidence = freshValues.copyOf()
