@@ -721,7 +721,7 @@ class ScreenCaptureService : Service() {
         private const val OPEN_PENDING_INTENT_REQUEST = 410
         private const val STOP_PENDING_INTENT_REQUEST = 411
         private const val MAX_IMAGES = 2
-        private const val MASK_HOLD_MS = 160L
+        private const val MASK_HOLD_MS = 250L
         private const val STALE_FRAME_LIMIT_MS = 3_500L
         private const val WATCHDOG_INTERVAL_MS = 500L
         private const val MAX_MASK_PIXELS = 2_000_000
