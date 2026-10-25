@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -348,45 +349,51 @@ private fun SatrDashboard(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.statusBars.only(WindowInsetsSides.Top))
-                .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom))
-                .verticalScroll(scrollState)
-                .padding(horizontal = 18.dp)
-                .padding(top = 12.dp, bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopCenter,
         ) {
-            SatrHeader()
-            HeroPanel()
-            SessionCard(snapshot)
-            ControlCard(
-                running = running,
-                snapshot = snapshot,
-                blurStrength = blurStrength,
-                onBlurStrengthChange = {
-                    blurStrength = it
-                    FilterSettings.blurRadius = it.roundToInt()
-                },
-                onStart = onStart,
-                onStop = onStop,
-            )
-            PermissionsCard(
-                overlayAllowed = overlayAllowed,
-                notificationsAllowed = notificationsAllowed,
-                onGrantOverlay = onGrantOverlay,
-            )
-            ModelCard(snapshot)
-            SafetyCard()
-            HowItWorksCard()
-            Text(
-                text = "دِكو سَتر · معالجة محلية · إصدار تجريبي 0.3.0",
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
+            Column(
+                modifier = Modifier
+                    .widthIn(max = 680.dp)
+                    .fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.statusBars.only(WindowInsetsSides.Top))
+                    .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom))
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 18.dp)
+                    .padding(top = 12.dp, bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                SatrHeader()
+                HeroPanel()
+                SessionCard(snapshot)
+                ControlCard(
+                    running = running,
+                    snapshot = snapshot,
+                    blurStrength = blurStrength,
+                    onBlurStrengthChange = {
+                        blurStrength = it
+                        FilterSettings.blurRadius = it.roundToInt()
+                    },
+                    onStart = onStart,
+                    onStop = onStop,
+                )
+                PermissionsCard(
+                    overlayAllowed = overlayAllowed,
+                    notificationsAllowed = notificationsAllowed,
+                    onGrantOverlay = onGrantOverlay,
+                )
+                ModelCard(snapshot)
+                SafetyCard()
+                HowItWorksCard()
+                Text(
+                    text = "دِكو سَتر · معالجة محلية · إصدار تجريبي 0.3.0",
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
     }
 }
