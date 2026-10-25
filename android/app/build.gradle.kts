@@ -157,8 +157,8 @@ val downloadRtmdetAssets by tasks.registering {
                 model,
             )
         }
-        check(model.length() == 24_032_356L &&
-            digest(model) == "99ee670820c4493aa13e20578b6a8e39781c319846dc41796a77765734beac5c"
+        check(model.length() == 43_236_976L &&
+            digest(model) == "9cd1787fbf3eb2bd64cc2d8154f41c036f5484b85599e1cbe0227a2dc5a4a08b"
         ) { "RTMDet-Ins-S asset failed size/SHA-256 verification." }
 
         if (!license.isFile || license.length() == 0L) {
