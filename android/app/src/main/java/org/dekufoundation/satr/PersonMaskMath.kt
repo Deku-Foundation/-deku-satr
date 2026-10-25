@@ -19,7 +19,10 @@ object PersonMaskMath {
             pixelCount in 1..MAX_MASK_PIXELS.toLong() &&
                 pixelCount == confidence.size.toLong(),
         ) { "Mask dimensions do not match its data or exceed the processing limit." }
-        require(threshold in 0f..1f) { "Threshold must be between zero and one." }
+        require(threshold.isFinite() && threshold in 0f..1f) { "Threshold must be finite and between zero and one." }
+        require(confidence.all { it.isFinite() && it in 0f..1f }) {
+            "Confidence values must be finite probabilities between zero and one."
+        }
 
         val radiusHorizontal = radiusX.coerceIn(0, width - 1)
         val radiusVertical = radiusY.coerceIn(0, height - 1)
