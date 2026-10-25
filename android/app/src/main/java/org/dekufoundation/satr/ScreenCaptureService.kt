@@ -382,9 +382,9 @@ class ScreenCaptureService : Service() {
                                             personFramesInARow = 0
                                         }
                                         val detected = if (previous.phase == SatrPhase.FILTERING) {
-                                            emptyFramesInARow < 3
+                                            emptyFramesInARow < EMPTY_FRAMES_TO_CLEAR_MASK
                                         } else {
-                                            personFramesInARow >= 2
+                                            personFramesInARow >= PERSON_FRAMES_TO_CONFIRM
                                         }
                                         val next = previous.copy(
                                             phase = if (detected) SatrPhase.FILTERING else SatrPhase.NO_PERSON_DETECTED,
@@ -399,7 +399,18 @@ class ScreenCaptureService : Service() {
                                             modelReady = true,
                                         )
                                         lastSuccessfulFrameMs = SystemClock.elapsedRealtime()
-                                        activeOverlay.updateFilterFrame(rendered.overlay)
+                                        // Keep the last mask for two empty/noisy frames. Publishing a
+                                        // transparent mask immediately makes the overlay visibly blink on
+                                        // videos and animated feeds; clear it only after stable absence.
+                                        val shouldUpdateMask =
+                                            detected ||
+                                                rendered.coveragePercent > MIN_PERSON_COVERAGE_PERCENT ||
+                                                emptyFramesInARow >= EMPTY_FRAMES_TO_CLEAR_MASK
+                                        if (shouldUpdateMask) {
+                                            activeOverlay.updateFilterFrame(rendered.overlay)
+                                        } else if (!rendered.overlay.isRecycled) {
+                                            rendered.overlay.recycle()
+                                        }
                                         activeOverlay.updateSession(next)
                                         SessionStatus.publish(next)
                                         published = true
@@ -688,5 +699,7 @@ class ScreenCaptureService : Service() {
         private const val MAX_MASK_PIXELS = 2_000_000
         private const val MAX_FRAME_PIXELS = 500_000
         private const val MIN_PERSON_COVERAGE_PERCENT = 1
+        private const val PERSON_FRAMES_TO_CONFIRM = 2
+        private const val EMPTY_FRAMES_TO_CLEAR_MASK = 3
     }
 }
