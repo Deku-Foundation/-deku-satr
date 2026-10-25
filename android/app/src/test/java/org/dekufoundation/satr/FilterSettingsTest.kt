@@ -33,6 +33,17 @@ class FilterSettingsTest {
     }
 
     @Test
+    fun processingProfileCanBeChangedAndReset() {
+        FilterSettings.processingProfile = ProcessingProfile.DETAIL
+        assertEquals(720, FilterSettings.processingProfile.maxEdge)
+        assertEquals(100L, FilterSettings.processingProfile.frameIntervalMs)
+        FilterSettings.processingProfile = ProcessingProfile.POWER_SAVER
+        assertEquals(480, FilterSettings.processingProfile.maxEdge)
+        FilterSettings.resetToDefaults()
+        assertEquals(ProcessingProfile.BALANCED, FilterSettings.processingProfile)
+    }
+
+    @Test
     fun maskExpansionIsBounded() {
         FilterSettings.maskExpansionRadius = -4
         assertEquals(0, FilterSettings.maskExpansionRadius)
