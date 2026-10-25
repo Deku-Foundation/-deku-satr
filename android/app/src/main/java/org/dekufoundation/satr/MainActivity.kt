@@ -514,7 +514,7 @@ private fun SatrDashboard(
                         HowItWorksCard()
                     }
                     Text(
-                        "ستر بلور · من Deku Foundation · إصدار تجريبي 0.4.1",
+                        "ستر بلور · من Deku Foundation · إصدار تجريبي 0.4.2",
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1110,7 +1110,7 @@ private fun SafetyCard() {
                 lineHeight = 22.sp,
             )
             Text(
-                "لتمرير اللمس في Android 12 وما بعده، تكون طبقة التمويه العادية بعتامة 80%؛ قد يبقى أثر من الصورة الأصلية. عند فشل التحليل، تصبح التغطية معتمة بالكامل وقد تمنع لمس التطبيق أسفلها حتى تضغط إيقاف.",
+                "لتمرير اللمس في Android 12 وما بعده، تكون طبقة التمويه العادية بعتامة 80%؛ قد يبقى أثر من الصورة الأصلية. عند اختيار التغطية الصلبة أو فشل التحليل، تصبح الطبقة معتمة وقد تمنع التفاعل مع التطبيق أسفلها حتى تضغط إيقاف.",
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFF613E00),
                 lineHeight = 20.sp,
