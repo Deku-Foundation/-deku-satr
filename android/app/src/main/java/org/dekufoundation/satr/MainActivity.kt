@@ -550,7 +550,7 @@ private fun SatrDashboard(
        PersonModelCard(modelProfile){ modelProfileName=it.name; FilterSettings.personModelProfile=it; onSaveFilterSettings() }
        PersonTargetControls(snapshot, onUpdateTarget)
        FilterSettingsCard(effect,{effectName=it.name;FilterSettings.effect=it;onSaveFilterSettings()},blurStrength,{blurStrength=it;FilterSettings.blurStrengthPercent=it.roundToInt()},confidenceThreshold,{confidenceThreshold=it;FilterSettings.confidenceThreshold=it},maskExpansion,{maskExpansion=it;FilterSettings.maskExpansionRadius=it.roundToInt()},onSaveFilterSettings){
-        FilterSettings.resetToDefaults();blurStrength=FilterSettings.blurStrengthPercent.toFloat();confidenceThreshold=FilterSettings.confidenceThreshold;maskExpansion=FilterSettings.maskExpansionRadius.toFloat();effectName=FilterSettings.effect.name;profileName=FilterSettings.processingProfile.name;onSaveFilterSettings()
+        FilterSettings.resetToDefaults();blurStrength=FilterSettings.blurStrengthPercent.toFloat();confidenceThreshold=FilterSettings.confidenceThreshold;maskExpansion=FilterSettings.maskExpansionRadius.toFloat();effectName=FilterSettings.effect.name;profileName=FilterSettings.processingProfile.name;modelProfileName=FilterSettings.personModelProfile.name;onSaveFilterSettings()
        }
        PersonTargetingCard(
         snapshot = snapshot,
@@ -1136,7 +1136,16 @@ private fun PersonTargetControls(
     ) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("التصحيح والاختيار اليدوي", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text("ابدأ جلسة باستخدام RTMDet-Ins-S لتظهر الأشخاص المكتشفون. حدّد من تريد طمسه أو استثناؤه؛ يتغير القناع في الجلسة الحالية فقط.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 21.sp)
+            StatusPill(
+                label = when (snapshot.personTargetMode) {
+                    PersonTargetMode.MASK_ALL -> "الوضع: طمس الجميع"
+                    PersonTargetMode.MASK_SELECTED_ONLY -> "الوضع: طمس المحدد فقط"
+                    PersonTargetMode.MASK_ALL_EXCEPT_SELECTED -> "الوضع: استثناء المحدد من التمويه"
+                },
+                container = MaterialTheme.colorScheme.primaryContainer,
+                foreground = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+            Text("ابدأ جلسة باستخدام RTMDet-Ins-tiny لتظهر الأشخاص المكتشفون. حدّد من تريد طمسه أو استثناؤه؛ يتغير القناع في الجلسة الحالية فقط.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 21.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(onClick = { onUpdateTarget(PersonTargetMode.MASK_ALL, emptySet()) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("طمس الجميع") }
                 OutlinedButton(
