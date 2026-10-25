@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.media.projection.MediaProjectionConfig
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
@@ -19,6 +20,7 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -34,6 +36,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -66,6 +69,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
@@ -78,6 +82,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -86,11 +92,18 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
+import java.util.concurrent.Executors
 
 class MainActivity : ComponentActivity() {
     private var snapshot by mutableStateOf(SessionStatus.current())
     private var overlayAllowed by mutableStateOf(false)
     private var notificationsAllowed by mutableStateOf(true)
+    private var processedImage by mutableStateOf<Bitmap?>(null)
+    private var mediaBusy by mutableStateOf(false)
+    private var mediaMessage by mutableStateOf("اختر صورة لتحليلها محلياً.")
+    private var mediaCoverage by mutableIntStateOf(0)
+    private var pendingExportBitmap: Bitmap? = null
+    private val mediaExecutor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "SatrMediaProcessor").apply { isDaemon = true } }
     private var unsubscribeStatus: (() -> Unit)? = null
     private var pendingUiSnapshot: SatrSessionSnapshot? = null
     private var uiFlushScheduled = false
@@ -101,6 +114,20 @@ class MainActivity : ComponentActivity() {
         pendingUiSnapshot?.let { snapshot = it }
         pendingUiSnapshot = null
         lastUiRenderMs = SystemClock.elapsedRealtime()
+    }
+
+    private val imagePicker = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> if (uri != null) processPickedImage(uri) }
+    private val exportPicker = registerForActivityResult(ActivityResultContracts.CreateDocument("image/jpeg")) { uri ->
+        val bitmap = pendingExportBitmap
+        pendingExportBitmap = null
+        if (uri == null || bitmap == null) mediaMessage = "لم تُحفظ نسخة؛ بقي الأصل كما هو."
+        else {
+            mediaMessage = "يجري حفظ النسخة…"
+            mediaExecutor.execute {
+                val saved = runCatching { contentResolver.openOutputStream(uri)?.use { output -> check(bitmap.compress(Bitmap.CompressFormat.JPEG, 94, output)) } ?: error("Destination unavailable.") }
+                runOnUiThread { mediaMessage = if (saved.isSuccess) "حُفظت نسخة معالجة؛ بقي الأصل دون تغيير." else "تعذر حفظ النسخة. اختر موقعاً آخر وحاول مجدداً." }
+            }
+        }
     }
 
     private val captureLauncher =
@@ -139,6 +166,12 @@ class MainActivity : ComponentActivity() {
                         onSaveFilterSettings = ::saveFilterSettings,
                         onStart = ::beginCaptureFlow,
                         onStop = ::requestStop,
+                        processedImage = processedImage,
+                        mediaBusy = mediaBusy,
+                        mediaMessage = mediaMessage,
+                        mediaCoverage = mediaCoverage,
+                        onPickImage = ::pickImage,
+                        onSaveImage = ::saveProcessedImage,
                     )
                 }
             }
@@ -148,6 +181,13 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         unsubscribeStatus = SessionStatus.subscribe(::publishSnapshotToUi)
+    }
+
+    override fun onDestroy() {
+        mediaExecutor.shutdownNow()
+        processedImage?.let { if (!it.isRecycled) it.recycle() }
+        processedImage = null
+        super.onDestroy()
     }
 
     override fun onStop() {
@@ -189,6 +229,33 @@ class MainActivity : ComponentActivity() {
                 uiFlushScheduled = true
                 val delay = (UI_METRICS_REFRESH_MS - (now - lastUiRenderMs)).coerceAtLeast(1L)
                 uiHandler.postDelayed(flushPendingSnapshot, delay)
+            }
+        }
+    }
+
+    private fun pickImage() { imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+
+    private fun saveProcessedImage() {
+        val bitmap = processedImage
+        if (bitmap == null || mediaBusy) { mediaMessage = "اختر صورة وانتظر اكتمال المعالجة قبل الحفظ."; return }
+        pendingExportBitmap = bitmap
+        exportPicker.launch("satr-blur-${System.currentTimeMillis()}.jpg")
+    }
+
+    private fun processPickedImage(uri: Uri) {
+        mediaBusy = true
+        mediaMessage = "يجري تحليل الصورة على الهاتف…"
+        mediaExecutor.execute {
+            val result = runCatching { ImagePrivacyProcessor.process(this, uri, FilterSettings.effect, FilterSettings.blurRadius, FilterSettings.confidenceThreshold, FilterSettings.maskExpansionRadius) }
+            runOnUiThread {
+                mediaBusy = false
+                result.onSuccess { output ->
+                    val previous = processedImage
+                    processedImage = output.bitmap
+                    mediaCoverage = output.coveragePercent
+                    mediaMessage = if (output.coveragePercent > 0) "اكتمل الفحص محلياً. راجع الحواف قبل مشاركة الصورة." else "لم يرصد النموذج شخصاً بوضوح؛ قد تكون الصورة غير مغطاة بالكامل."
+                    if (previous != null && previous !== output.bitmap) uiHandler.postDelayed({ if (processedImage !== previous && !previous.isRecycled) previous.recycle() }, 700L)
+                }.onFailure { mediaMessage = "تعذر تحليل الصورة. جرّب صورة أوضح؛ لم يُعدّل الملف الأصلي." }
             }
         }
     }
@@ -281,7 +348,7 @@ class MainActivity : ComponentActivity() {
             displayWidth = metrics.widthPixels
             displayHeight = metrics.heightPixels
         }
-        val size = CaptureSizePolicy.downsample(displayWidth, displayHeight)
+        val size = CaptureSizePolicy.downsample(displayWidth, displayHeight, FilterSettings.processingProfile.maxEdge)
         val densityDpi = resources.configuration.densityDpi
         val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
             action = ScreenCaptureService.ACTION_START
@@ -378,152 +445,110 @@ private fun SatrTheme(content: @Composable () -> Unit) {
 
 @Composable
 private fun SatrDashboard(
-    snapshot: SatrSessionSnapshot,
-    overlayAllowed: Boolean,
-    notificationsAllowed: Boolean,
-    onGrantOverlay: () -> Unit,
-    onOpenNotificationSettings: () -> Unit,
-    onSaveFilterSettings: () -> Unit,
-    onStart: () -> Unit,
-    onStop: () -> Unit,
+ snapshot:SatrSessionSnapshot, overlayAllowed:Boolean, notificationsAllowed:Boolean,
+ onGrantOverlay:()->Unit, onOpenNotificationSettings:()->Unit, onSaveFilterSettings:()->Unit,
+ onStart:()->Unit, onStop:()->Unit, processedImage:Bitmap?, mediaBusy:Boolean, mediaMessage:String,
+ mediaCoverage:Int, onPickImage:()->Unit, onSaveImage:()->Unit,
 ) {
-    val running = snapshot.phase in setOf(
-        SatrPhase.STARTING,
-        SatrPhase.FILTERING,
-        SatrPhase.NO_PERSON_DETECTED,
-        SatrPhase.FAIL_CLOSED,
-    )
-    var selectedTab by rememberSaveable { mutableStateOf(0) }
-    var blurStrength by rememberSaveable { mutableFloatStateOf(FilterSettings.blurStrengthPercent.toFloat()) }
-    var confidenceThreshold by rememberSaveable { mutableFloatStateOf(FilterSettings.confidenceThreshold) }
-    var maskExpansion by rememberSaveable { mutableFloatStateOf(FilterSettings.maskExpansionRadius.toFloat()) }
-    var effectName by rememberSaveable { mutableStateOf(FilterSettings.effect.name) }
-    val effect = runCatching { PrivacyEffect.valueOf(effectName) }.getOrDefault(PrivacyEffect.BLUR)
-    val scrollState = rememberScrollState()
-
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Scaffold(
-            containerColor = MaterialTheme.colorScheme.background,
-            bottomBar = {
-                NavigationBar {
-                    NavigationBarItem(
-                        selected = selectedTab == 0,
-                        onClick = { selectedTab = 0 },
-                        icon = { Text("⌂", style = MaterialTheme.typography.titleLarge) },
-                        label = { Text("الرئيسية") },
-                    )
-                    NavigationBarItem(
-                        selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
-                        icon = { Text("⚙︎", style = MaterialTheme.typography.titleLarge) },
-                        label = { Text("الإعدادات") },
-                    )
-                }
-            },
-        ) { contentPadding ->
-            Box(
-                modifier = Modifier.fillMaxSize().padding(contentPadding),
-                contentAlignment = Alignment.TopCenter,
-            ) {
-                Column(
-                    modifier = Modifier
-                        .widthIn(max = 680.dp)
-                        .fillMaxWidth()
-                        .windowInsetsPadding(WindowInsets.statusBars.only(WindowInsetsSides.Top))
-                        .verticalScroll(scrollState)
-                        .padding(horizontal = 18.dp)
-                        .padding(top = 12.dp, bottom = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    SatrHeader()
-                    if (selectedTab == 0) {
-                        Text(
-                            "الرئيسية",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground,
-                        )
-                        HeroPanel()
-                        SessionCard(snapshot)
-                        ControlCard(
-                            running = running,
-                            waitingForPermission = snapshot.phase == SatrPhase.WAITING_PERMISSION,
-                            onStart = onStart,
-                            onStop = onStop,
-                        )
-                        Text(
-                            "تُعالج الإطارات على الهاتف. لا تُحفظ لقطات الشاشة.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.fillMaxWidth(),
-                            textAlign = TextAlign.Center,
-                        )
-                    } else {
-                        Text(
-                            "الإعدادات",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground,
-                        )
-                        Text(
-                            "اضبط قوة التمويه وحساسية القناع. تُطبّق التغييرات على الإطار التالي.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        FilterSettingsCard(
-                            effect = effect,
-                            onEffectChange = {
-                                effectName = it.name
-                                FilterSettings.effect = it
-                                onSaveFilterSettings()
-                            },
-                            blurStrength = blurStrength,
-                            onBlurStrengthChange = {
-                                blurStrength = it
-                                FilterSettings.blurStrengthPercent = it.roundToInt()
-                            },
-                            confidenceThreshold = confidenceThreshold,
-                            onConfidenceThresholdChange = {
-                                confidenceThreshold = it
-                                FilterSettings.confidenceThreshold = it
-                            },
-                            maskExpansion = maskExpansion,
-                            onMaskExpansionChange = {
-                                maskExpansion = it
-                                FilterSettings.maskExpansionRadius = it.roundToInt()
-                            },
-                            onSave = onSaveFilterSettings,
-                            onReset = {
-                                FilterSettings.resetToDefaults()
-                                blurStrength = FilterSettings.blurStrengthPercent.toFloat()
-                                confidenceThreshold = FilterSettings.confidenceThreshold
-                                maskExpansion = FilterSettings.maskExpansionRadius.toFloat()
-                                effectName = FilterSettings.effect.name
-                                onSaveFilterSettings()
-                            },
-                        )
-                        TargetScopeCard()
-                        PermissionsCard(
-                            overlayAllowed = overlayAllowed,
-                            notificationsAllowed = notificationsAllowed,
-                            onGrantOverlay = onGrantOverlay,
-                            onOpenNotificationSettings = onOpenNotificationSettings,
-                        )
-                        ModelCard(snapshot)
-                        SafetyCard()
-                        HowItWorksCard()
-                    }
-                    Text(
-                        "ستر بلور · من Deku Foundation · إصدار تجريبي 0.4.2",
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                    )
-                }
-            }
-        }
+ val running=snapshot.phase in setOf(SatrPhase.STARTING,SatrPhase.FILTERING,SatrPhase.NO_PERSON_DETECTED,SatrPhase.FAIL_CLOSED)
+ var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+ var blurStrength by rememberSaveable { mutableFloatStateOf(FilterSettings.blurStrengthPercent.toFloat()) }
+ var confidenceThreshold by rememberSaveable { mutableFloatStateOf(FilterSettings.confidenceThreshold) }
+ var maskExpansion by rememberSaveable { mutableFloatStateOf(FilterSettings.maskExpansionRadius.toFloat()) }
+ var effectName by rememberSaveable { mutableStateOf(FilterSettings.effect.name) }
+ var profileName by rememberSaveable { mutableStateOf(FilterSettings.processingProfile.name) }
+ val effect=runCatching { PrivacyEffect.valueOf(effectName) }.getOrDefault(PrivacyEffect.BLUR)
+ val profile=runCatching { ProcessingProfile.valueOf(profileName) }.getOrDefault(ProcessingProfile.BALANCED)
+ val scrollState=rememberScrollState()
+ Surface(Modifier.fillMaxSize(),color=MaterialTheme.colorScheme.background) {
+  Scaffold(containerColor=MaterialTheme.colorScheme.background,bottomBar={
+   NavigationBar { listOf("الرئيسية","المعرض","المحرر","الإعدادات").forEachIndexed { i,label ->
+    NavigationBarItem(selected=selectedTab==i,onClick={selectedTab=i},icon={Text(listOf("⌂","▦","✎","⚙")[i],style=MaterialTheme.typography.titleLarge)},label={Text(label,maxLines=1)})
+   } }
+  }) { padding ->
+   Box(Modifier.fillMaxSize().padding(padding),contentAlignment=Alignment.TopCenter) {
+    Column(Modifier.widthIn(max=680.dp).fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars.only(WindowInsetsSides.Top)).verticalScroll(scrollState).padding(horizontal=18.dp).padding(top=12.dp,bottom=24.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
+     SatrHeader()
+     when(selectedTab) {
+      0 -> {
+       Text("الرئيسية",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
+       HeroPanel(); SessionCard(snapshot)
+       ControlCard(running,snapshot.phase==SatrPhase.WAITING_PERMISSION,onStart,onStop)
+       Text("تُعالج إطارات الشاشة على الهاتف. لا تُحفظ لقطات الشاشة.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.fillMaxWidth(),textAlign=TextAlign.Center)
+      }
+      1 -> {
+       Text("المعرض",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
+       Text("افحص صورة تختارها بنفسك. المعالجة محلية ولا تستبدل الملف الأصلي.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+       MediaPreviewCard(processedImage,mediaBusy,mediaMessage,mediaCoverage)
+       Button(onClick=onPickImage,modifier=Modifier.fillMaxWidth().heightIn(min=52.dp),shape=RoundedCornerShape(16.dp)){Text("اختيار صورة")}
+       OutlinedButton(onClick={selectedTab=2},modifier=Modifier.fillMaxWidth().heightIn(min=52.dp),shape=RoundedCornerShape(16.dp)){Text("فتح المحرر")}
+       OutlinedButton(onClick=onStart,modifier=Modifier.fillMaxWidth().heightIn(min=52.dp),shape=RoundedCornerShape(16.dp)){Text("حماية الفيديو والمحتوى أثناء العرض")}
+       Text("تُفلتر الفيديوهات والتطبيقات الأخرى أثناء عرضها عبر جلسة حماية الشاشة. اختيار صورة هنا للتحرير المنفصل.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+      }
+      2 -> {
+       Text("المحرر",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
+       Text("اختر صورة، عاين النتيجة، ثم احفظ نسخة في موقع تختاره. يبقى الأصل دون تغيير.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+       MediaPreviewCard(processedImage,mediaBusy,mediaMessage,mediaCoverage)
+       Row(horizontalArrangement=Arrangement.spacedBy(10.dp),modifier=Modifier.fillMaxWidth()){
+        Button(onClick=onPickImage,modifier=Modifier.weight(1f).heightIn(min=52.dp),shape=RoundedCornerShape(16.dp)){Text("اختيار صورة")}
+        OutlinedButton(onClick=onSaveImage,enabled=processedImage!=null&&!mediaBusy,modifier=Modifier.weight(1f).heightIn(min=52.dp),shape=RoundedCornerShape(16.dp)){Text("حفظ نسخة")}
+       }
+       FilterSettingsCard(effect,{effectName=it.name;FilterSettings.effect=it;onSaveFilterSettings()},blurStrength,{blurStrength=it;FilterSettings.blurStrengthPercent=it.roundToInt()},confidenceThreshold,{confidenceThreshold=it;FilterSettings.confidenceThreshold=it},maskExpansion,{maskExpansion=it;FilterSettings.maskExpansionRadius=it.roundToInt()},onSaveFilterSettings){
+        FilterSettings.resetToDefaults();blurStrength=FilterSettings.blurStrengthPercent.toFloat();confidenceThreshold=FilterSettings.confidenceThreshold;maskExpansion=FilterSettings.maskExpansionRadius.toFloat();effectName=FilterSettings.effect.name;profileName=FilterSettings.processingProfile.name;onSaveFilterSettings()
+       }
+      }
+      else -> {
+       Text("الإعدادات",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
+       Text("اختر التوازن بين سرعة المعالجة وتفاصيل القناع. حجم الالتقاط يُطبّق عند بدء جلسة جديدة.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+       ProcessingProfileCard(profile){profileName=it.name;FilterSettings.processingProfile=it;onSaveFilterSettings()}
+       FilterSettingsCard(effect,{effectName=it.name;FilterSettings.effect=it;onSaveFilterSettings()},blurStrength,{blurStrength=it;FilterSettings.blurStrengthPercent=it.roundToInt()},confidenceThreshold,{confidenceThreshold=it;FilterSettings.confidenceThreshold=it},maskExpansion,{maskExpansion=it;FilterSettings.maskExpansionRadius=it.roundToInt()},onSaveFilterSettings){
+        FilterSettings.resetToDefaults();blurStrength=FilterSettings.blurStrengthPercent.toFloat();confidenceThreshold=FilterSettings.confidenceThreshold;maskExpansion=FilterSettings.maskExpansionRadius.toFloat();effectName=FilterSettings.effect.name;profileName=FilterSettings.processingProfile.name;onSaveFilterSettings()
+       }
+       TargetScopeCard()
+       PermissionsCard(overlayAllowed,notificationsAllowed,onGrantOverlay,onOpenNotificationSettings)
+       ModelCard(snapshot);SafetyCard();HowItWorksCard()
+      }
+     }
+     Text("ستر بلور · SATR BLUR · من Deku Foundation · إصدار تجريبي 0.5.0",modifier=Modifier.fillMaxWidth().padding(top=4.dp),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,textAlign=TextAlign.Center)
     }
+   }
+  }
+ }
+}
+
+@Composable
+private fun MediaPreviewCard(bitmap:Bitmap?,busy:Boolean,message:String,coveragePercent:Int) {
+ Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(22.dp),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surface)){
+  Column(Modifier.fillMaxWidth().padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
+   if(bitmap!=null&&!bitmap.isRecycled){
+    Image(bitmap=bitmap.asImageBitmap(),contentDescription="معاينة الصورة بعد تطبيق سياسة الإخفاء",modifier=Modifier.fillMaxWidth().heightIn(max=360.dp).clip(RoundedCornerShape(14.dp)),contentScale=ContentScale.Fit)
+    Text("تغطية القناع: $coveragePercent٪",style=MaterialTheme.typography.labelLarge)
+   } else Box(Modifier.fillMaxWidth().height(190.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant),contentAlignment=Alignment.Center){
+    Image(painter=painterResource(R.drawable.ic_satr),contentDescription=null,modifier=Modifier.size(68.dp))
+   }
+   if(busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+   Text(message,style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+  }
+ }
+}
+
+@Composable
+private fun ProcessingProfileCard(profile:ProcessingProfile,onChange:(ProcessingProfile)->Unit) {
+ Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(22.dp),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surface)){
+  Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
+   Text("أداء المعالجة",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+   listOf(ProcessingProfile.POWER_SAVER to "توفير الطاقة",ProcessingProfile.BALANCED to "متوازن",ProcessingProfile.DETAIL to "تفاصيل أعلى").forEach{(option,label)->
+    Row(verticalAlignment=Alignment.CenterVertically,modifier=Modifier.fillMaxWidth()){
+     Column(Modifier.weight(1f)){
+      Text(label,style=MaterialTheme.typography.bodyLarge,fontWeight=FontWeight.SemiBold)
+      Text(when(option){ProcessingProfile.POWER_SAVER->"480px · حمل أقل";ProcessingProfile.BALANCED->"640px · الإعداد الافتراضي";ProcessingProfile.DETAIL->"720px · حمل أعلى"},style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+     }
+     if(option==profile) StatusPill("محدد",MaterialTheme.colorScheme.primaryContainer,MaterialTheme.colorScheme.onPrimaryContainer)
+     else OutlinedButton(onClick={onChange(option)},modifier=Modifier.heightIn(min=48.dp)){Text("اختيار")}
+    }
+   }
+  }
+ }
 }
 
 @Composable
