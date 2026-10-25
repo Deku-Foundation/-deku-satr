@@ -202,12 +202,11 @@ class ScreenCaptureService : Service() {
         val frame = try {
             imageToBitmap(image)
         } catch (_: Exception) {
-            image.close()
             inferenceBusy.set(false)
             failClosed("تعذر قراءة إطار الشاشة؛ غُطّيت الشاشة احتياطياً.")
             return
         } finally {
-            if (!image.isClosed) image.close()
+            image.close()
         }
 
         if (isNearUniformBlack(frame)) {
