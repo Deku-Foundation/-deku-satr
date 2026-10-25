@@ -3,36 +3,50 @@
 A planned feature is not an implementation; a CI pass is not evidence of real-device performance.
 
 ## M0 — Browser proof of concept
+
 - [x] Local image selection and PNG export.
-- [x] Browser-side person segmentation and masked blur.
+- [x] Browser-side segmentation and masked blur.
 - [x] Boundary dilation and mask unit tests.
-- [x] Live camera preview with sequential inference and a solid-frame fallback when the mask is uncertain.
-- [x] PWA manifest, responsive UI, and CI / Pages workflow.
-- [ ] Validate full flow on Android Chrome, desktop Chromium, Firefox and Safari.
-- [ ] Audit model license terms, exact downloaded artifacts, and browser-cache/offline behaviour.
+- [x] Live camera preview and a conservative obscuring fallback when inference is uncertain.
+- [x] PWA manifest, responsive UI, CI, and Pages workflow.
+- [ ] Validate the complete flow across Android Chrome, desktop Chromium, Firefox, and Safari.
+- [ ] Review exact model artifacts, license terms, and browser-cache/offline behavior.
 - [ ] Publish measured quality, latency, and memory results.
 
-## M1 — Select the production model
-- [ ] Benchmark a compact semantic-person segmenter and an instance-segmentation option.
-- [ ] Record checkpoint revision/checksum, license, dataset provenance, preprocessing, I/O shapes, and decoder.
-- [ ] Evaluate INT8 / FP16 quantization quality drift.
-- [ ] Build an annotated test set for multiple people, distance, occlusion, lighting, clothing, varied skin tones, and motion.
-- [ ] Set measurable gates for recall, boundary leakage, false masks, latency, RAM, thermal impact, and battery draw.
+## M1 — Choose and validate the production model
 
-## M2 — Native Android
-- [ ] Kotlin + CameraX app using LiteRT CompiledModel.
-- [ ] CPU-only fallback and opportunistic GPU/NPU acceleration.
-- [ ] No microphone permission, no background camera, and no persistent frame storage.
-- [ ] Thermal-aware frame scheduler and visible stale-frame indicator.
-- [ ] Test on low-cost devices, not just flagships.
+- [ ] Benchmark ML Kit Selfie Segmentation as a compact baseline, without assuming selfie quality generalizes to arbitrary screen content.
+- [ ] Benchmark at least one compact LiteRT semantic person segmenter; verify class mapping, input/output shape, model provenance, and license.
+- [ ] Compare FP32/FP16/INT8 where supported and measure accuracy drift.
+- [ ] Build a versioned annotated dataset for multiple, small, distant, partially occluded, and moving people in real app screenshots.
+- [ ] Set release gates for person recall, boundary leakage, false masks, p50/p95 latency, peak RAM, sustained FPS, heat, energy, and download/APK size.
+
+## M2 — Native Android (in progress)
+
+- [x] Native Kotlin app module and app launch screen.
+- [x] Explicit overlay-access and MediaProjection-consent flow.
+- [x] mediaProjection foreground service and persistent stop notification.
+- [x] Floating status/stop overlay.
+- [x] Downscaled bounded ImageReader capture surface and unit-tested size policy.
+- [x] Privacy disclosure; no camera, microphone, storage, or internet permission in the current native module.
+- [x] Android CI workflow for unit tests, debug APK build, and artifact upload.
+- [ ] Verify the workflow build and install the APK on physical devices.
+- [ ] Test overlay visibility/feedback, touch pass-through, rotations, revocation, secure windows, and DRM behavior on several Android versions/OEMs.
+- [ ] Implement pixel ingestion with bounded in-memory buffers only after the capture/overlay composition test is passed.
+- [ ] Integrate a replaceable person-mask interface and a benchmarked model.
+- [ ] Apply blur to the mask, display honest confidence/staleness states, and fall back to "not protected".
+- [ ] Measure performance and thermal throttling on low-cost phones.
 
 ## M3 — Desktop and browser integration
+
 - [ ] Offline-capable desktop utility for Linux and Windows.
 - [ ] Browser extension with explicit per-site permissions and visible enable/disable controls.
-- [ ] Evaluate any system-wide screen capture separately for privacy, platform permission, and distribution-policy constraints.
+- [ ] Evaluate system-wide screen capture separately for platform permission, privacy, and packaging constraints.
 
 ## M4 — Release hardening
-- [ ] Pin and hash every model artifact; publish model cards and license notices.
-- [ ] Add malformed-media tests, dependency scanning, and reproducible release checks.
-- [ ] Audit network requests and confirm no media payload leaves the device.
-- [ ] Publish tested device/browser matrix and explicit model limitations.
+
+- [ ] Pin and hash every model artifact; publish model cards and notices.
+- [ ] Add malformed-frame, rotation, service-stop, and permission-revocation tests.
+- [ ] Add dependency/security scanning and reproducible release checks.
+- [ ] Audit network traffic and ensure no media payload leaves the device.
+- [ ] Publish tested device/OS matrix and explicit limits; do not claim universal coverage.
