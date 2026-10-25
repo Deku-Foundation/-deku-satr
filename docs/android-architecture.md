@@ -1,6 +1,6 @@
 # Native Android architecture
 
-Updated: 2026-10-25. Version 0.4.0 contains an embedded segmentation baseline, separate Home/Settings navigation, stored filter settings and a full-screen renderer. Android/OEM behavior remains unvalidated outside GitHub-hosted build tests.
+Updated: 2026-10-25. Version 0.5.1 switches the live and still-image paths to a pinned LiteRT/TFLite LR-ASPP + MobileNetV3-Large semantic person segmenter. This is an experimental model integration; Android/OEM behavior remains unvalidated outside hosted CI. Android/OEM behavior remains unvalidated outside GitHub-hosted build tests.
 
 ## Implemented on this branch
 
@@ -10,8 +10,8 @@ Updated: 2026-10-25. Version 0.4.0 contains an embedded segmentation baseline, s
 - Explicit user permission for overlay access and fresh MediaProjection consent for each capture session.
 - A mediaProjection foreground service with persistent notification and immediate stop action.
 - A touch-pass-through transparent full-screen filter overlay and a separate draggable status/stop panel.
-- ML Kit Selfie Segmentation 16.0.0-beta6, bundled at build time; no runtime model download.
-- Frames capped at a longest edge of 640 pixels, a two-image ImageReader, a 140 ms minimum frame interval, raw-size ML Kit masks, and one in-flight inference task. Frames are dropped rather than queued while inference is busy.
+- LiteRT/TFLite Interpreter 1.4.2 with LR-ASPP + MobileNetV3-Large dynamic weight-only INT8 weights and FP32 activations. Gradle downloads the model from an immutable Hugging Face revision and verifies SHA-256 before packaging; there is no runtime model download.
+- Frames are bounded by the selected capture profile, use a two-image ImageReader and one in-flight inference job. Frames are dropped rather than queued while inference is busy. LR-ASPP returns a semantic 21-class tensor; VOC class index 15 is treated as person and converted to a person confidence map.
 - A CPU two-pass box blur, block pixelation or solid cover clipped to a thresholded/dilated person mask. Replaced bitmaps are released after a short delay to avoid recycling during rendering. Failed inference triggers an opaque fail-closed overlay while the user-accessible stop panel remains visible.
 - Unit tests for capture scaling, mask thresholding, dilation, and coverage. Android CI builds a debug APK and checks that the merged manifest does not include INTERNET permission.
 
@@ -27,11 +27,11 @@ Official release notes:
 
 ## Model choice
 
-ML Kit Selfie Segmentation is the first embedded baseline because it is bundled and optimized for person masks, supports stream mode, and has an output-mask API. Google's docs say the bundled dependency adds approximately 4.5 MB and publish 25–65 ms latency for Pixel 4, depending on image size. Those numbers are reference results, not a promise for Satr or lower-end phones.
+The active candidate is LiteRT/TFLite LR-ASPP + MobileNetV3-Large, sourced from the LiteRT Community conversion of TorchVision's LR-ASPP model. The dynamic weight-only INT8 artifact is approximately 3.52 MB and is pinned by revision and SHA-256. The implementation introspects input/output tensor layouts and rejects unexpected shapes rather than guessing. These facts do not establish accuracy or speed on Satr's captured frames.
 
-Source: https://developers.google.com/ml-kit/vision/selfie-segmentation/android
+Source: https://huggingface.co/litert-community/lraspp_mobilenet_v3_large
 
-The API is beta, and the underlying model is optimized for person/selfie imagery. It may miss people that are small, distant, occluded, stylized, or part of unusual application content. The intent is to mask people, not classify gender.
+The model is semantic segmentation, not per-person instance segmentation and not a gender classifier. It may miss small, distant, occluded, stylized, or unusual-content subjects. The converted model card does not declare an explicit license, so legal review is required before any public release; this branch is an evaluation integration, not release approval.
 
 ## Pipeline and constraints
 
@@ -138,3 +138,17 @@ References:
 - AGP-to-Gradle compatibility table: https://developer.android.com/build/releases/about-agp
 - ML Kit stream mode, raw masks and frame throttling: https://developers.google.com/ml-kit/vision/selfie-segmentation/android
 - Android touch-target guidance: https://developer.android.com/develop/ui/compose/accessibility/api-defaults
+
+
+## Version 0.5.1 model migration
+
+The active Android model is LR-ASPP + MobileNetV3-Large through LiteRT/TFLite Interpreter 1.4.2. The build fetches the dynamic weight-only INT8 / FP32-activation artifact from immutable revision `ac7d12fd05b7542cd884c85968b3193c8f8e4fa7`, verifies SHA-256 `1a0a31a925f1c8e2abb76e96c4bd4bdcbc625f8389f1029530007fded4ea9ed9`, and packages it into generated APK assets. The app itself performs no model network access.
+
+Input/output tensor layouts are inspected at runtime. The implementation normalizes RGB with ImageNet mean/std, letterboxes to the model input, reads the 21-class output and uses VOC person class 15. The output is a shared semantic mask: it cannot tell which mask belongs to which person and cannot infer gender. NNAPI is requested with a three-thread CPU fallback path; actual acceleration varies by device.
+
+Release gates still open:
+- Verify the upstream converted model's distribution license/provenance.
+- Run labelled multi-person screen/video samples and compare recall, mask leakage and missed-person rate against the previous model.
+- Measure p50/p95 latency, peak RAM, sustained throughput, heat and battery on low-, mid- and high-range physical devices.
+- Test MediaProjection overlay feedback, orientation changes, safe/DRM windows and stop/revocation.
+- Do not advertise 99% accuracy or complete coverage without a representative benchmark.
