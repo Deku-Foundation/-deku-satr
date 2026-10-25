@@ -309,7 +309,7 @@ class ScreenCaptureService : Service() {
         val now = SystemClock.elapsedRealtime()
         if (stopping ||
             frameGeneration != captureGeneration ||
-            now - lastFrameAcceptedMs < MIN_FRAME_INTERVAL_MS ||
+            now - lastFrameAcceptedMs < FilterSettings.processingProfile.frameIntervalMs ||
             !inferenceBusy.compareAndSet(false, true)
         ) {
             image.close()
@@ -745,7 +745,6 @@ class ScreenCaptureService : Service() {
         private const val OPEN_PENDING_INTENT_REQUEST = 410
         private const val STOP_PENDING_INTENT_REQUEST = 411
         private const val MAX_IMAGES = 2
-        private const val MIN_FRAME_INTERVAL_MS = 140L
         private const val MASK_HOLD_MS = 650L
         private const val STALE_FRAME_LIMIT_MS = 3_500L
         private const val WATCHDOG_INTERVAL_MS = 500L
