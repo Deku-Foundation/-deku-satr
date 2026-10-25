@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import kotlin.math.roundToInt
 
 enum class PrivacyEffect { BLUR, PIXELATE, COVER }
+enum class PersonModelProfile { FAST_SEMANTIC, RTMDET_INS_S }
 enum class ProcessingProfile(val maxEdge: Int, val frameIntervalMs: Long, val tileWideFrames: Boolean) {
     LOW_LATENCY(360, 80L, false),
     POWER_SAVER(480, 200L, false),
@@ -27,6 +28,16 @@ object FilterSettings {
 
     @Volatile
     var effect: PrivacyEffect = PrivacyEffect.BLUR
+
+    @Volatile
+    var personModelProfile: PersonModelProfile = PersonModelProfile.FAST_SEMANTIC
+
+    /** Instance target and track IDs are session-local and are never restored from disk. */
+    @Volatile
+    var personTargetMode: PersonTargetMode = PersonTargetMode.MASK_ALL
+
+    @Volatile
+    var selectedPersonTrackIds: Set<Long> = emptySet()
 
     @Volatile
     var processingProfile: ProcessingProfile = ProcessingProfile.BALANCED
@@ -66,6 +77,9 @@ object FilterSettings {
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         preferences = prefs
         effect = runCatching { PrivacyEffect.valueOf(prefs.getString("privacy_effect", PrivacyEffect.BLUR.name) ?: PrivacyEffect.BLUR.name) }.getOrDefault(PrivacyEffect.BLUR)
+        personModelProfile = runCatching { PersonModelProfile.valueOf(prefs.getString("person_model_profile", PersonModelProfile.FAST_SEMANTIC.name) ?: PersonModelProfile.FAST_SEMANTIC.name) }.getOrDefault(PersonModelProfile.FAST_SEMANTIC)
+        personTargetMode = PersonTargetMode.MASK_ALL
+        selectedPersonTrackIds = emptySet()
         processingProfile = runCatching { ProcessingProfile.valueOf(prefs.getString("processing_profile", ProcessingProfile.BALANCED.name) ?: ProcessingProfile.BALANCED.name) }.getOrDefault(ProcessingProfile.BALANCED)
         blurStrengthPercent = prefs.getInt("blur_strength_percent", DEFAULT_BLUR_STRENGTH_PERCENT)
         confidenceThreshold = prefs.getFloat("confidence_threshold", DEFAULT_CONFIDENCE_THRESHOLD)
@@ -74,6 +88,9 @@ object FilterSettings {
 
     fun resetToDefaults() {
         effect = PrivacyEffect.BLUR
+        personModelProfile = PersonModelProfile.FAST_SEMANTIC
+        personTargetMode = PersonTargetMode.MASK_ALL
+        selectedPersonTrackIds = emptySet()
         processingProfile = ProcessingProfile.BALANCED
         blurStrengthPercent = DEFAULT_BLUR_STRENGTH_PERCENT
         confidenceThreshold = DEFAULT_CONFIDENCE_THRESHOLD
@@ -87,6 +104,7 @@ object FilterSettings {
             }
         prefs.edit()
             .putString("privacy_effect", effect.name)
+            .putString("person_model_profile", personModelProfile.name)
             .putString("processing_profile", processingProfile.name)
             .putInt("blur_strength_percent", blurStrengthPercent)
             .putFloat("confidence_threshold", confidenceThreshold)
