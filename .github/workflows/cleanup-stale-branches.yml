@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   cleanup:
-    if: startsWith(github.event.head_commit.message, 'chore(repo): remove stale refs')
+    if: "startsWith(github.event.head_commit.message, 'chore(repo): run branch cleanup')"
     runs-on: ubuntu-latest
     steps:
       - name: Delete only the approved obsolete refs
