@@ -34,7 +34,7 @@ class PersonMaskMathTest {
 
     @Test
     fun coveragePercentIsStable() {
-        assertEquals(20, PersonMaskMath.coveragePercent(booleanArrayOf(true, false, true, false, false)))
+        assertEquals(40, PersonMaskMath.coveragePercent(booleanArrayOf(true, false, true, false, false)))
         assertEquals(0, PersonMaskMath.coveragePercent(booleanArrayOf()))
     }
 
