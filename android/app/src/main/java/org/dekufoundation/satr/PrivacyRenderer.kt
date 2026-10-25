@@ -1,6 +1,7 @@
 package org.dekufoundation.satr
 
 import android.graphics.Bitmap
+import kotlin.math.min
 
 data class RenderedPrivacyMask(
     val overlay: Bitmap,
