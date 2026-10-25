@@ -624,7 +624,7 @@ class ScreenCaptureService : Service() {
 
         return builder
             .setSmallIcon(R.drawable.ic_satr)
-            .setContentTitle("دِكو سَتر · جلسة التقاط نشطة")
+            .setContentTitle("ستر بلور · جلسة التقاط نشطة")
             .setContentText("تمويه تجريبي محلي؛ قد يفوت النموذج أشخاصاً.")
             .setContentIntent(openIntent)
             .setOngoing(true)
