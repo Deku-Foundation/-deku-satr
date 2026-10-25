@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#101a2a" />
+    <meta name="description" content="Local-first person blurring for images and a live camera preview." />
+    <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <title>Deku Satr — visual protection</title>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="./" aria-label="Deku Satr home">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 48 48"><path d="M8 12.5A4.5 4.5 0 0 1 12.5 8h23A4.5 4.5 0 0 1 40 12.5v23a4.5 4.5 0 0 1-4.5 4.5h-23A4.5 4.5 0 0 1 8 35.5z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15 17h18M15 24h13M15 31h18" stroke="#75d5c7" stroke-width="3" stroke-linecap="round"/></svg>
+          </span>
+          <span><strong>Deku Satr</strong><small>ستر بصري محلي</small></span>
+        </a>
+        <span class="privacy-pill"><span></span> On-device processing</span>
+      </header>
+
+      <main>
+        <section class="intro">
+          <p class="eyebrow">DEKU FOUNDATION · EARLY PROTOTYPE</p>
+          <h1>Keep the people.<br /><span>Blur what you choose.</span></h1>
+          <p class="intro-copy">Select an image or open a camera preview. Detection and blur run in this browser; your media is not uploaded to a Deku server.</p>
+        </section>
+
+        <section class="workspace" aria-label="Image and camera processing">
+          <div class="controls-panel">
+            <div class="section-heading"><span class="step">01</span><div><h2>Choose a source</h2><p>Image or live camera</p></div></div>
+            <label class="file-picker" for="imageInput">
+              <span class="file-icon" aria-hidden="true">＋</span>
+              <span><strong>Select an image</strong><small>JPG, PNG, WebP · processed locally</small></span>
+              <input id="imageInput" type="file" accept="image/*" />
+            </label>
+            <button id="cameraButton" class="button button-secondary" type="button">Start camera preview</button>
+
+            <div class="divider"></div>
+            <div class="section-heading"><span class="step">02</span><div><h2>Set the blur</h2><p>Applied to the detected person mask</p></div></div>
+            <label class="range-label" for="blurStrength"><span>Blur strength</span><output id="blurValue" for="blurStrength">18 px</output></label>
+            <input id="blurStrength" type="range" min="6" max="34" value="18" step="2" />
+            <div class="range-ends"><span>Soft</span><span>Strong</span></div>
+            <button id="processButton" class="button button-primary" type="button" disabled>Load model and protect image</button>
+            <button id="downloadButton" class="button button-quiet" type="button" disabled>Download protected PNG</button>
+
+            <div class="status-card" aria-live="polite">
+              <span id="statusDot" class="status-dot"></span>
+              <div><strong id="statusTitle">Ready when you are</strong><p id="statusText">Choose an image, then start local inference.</p></div>
+            </div>
+            <p class="privacy-note"><strong>Privacy note</strong> The model downloads from Hugging Face on first use. Your selected image is not sent to that service by this app.</p>
+          </div>
+
+          <div class="preview-panel">
+            <div class="preview-header"><div><span class="eyebrow">LIVE WORKSPACE</span><h2 id="previewHeading">Preview</h2></div><span id="modeBadge" class="mode-badge">Waiting for media</span></div>
+            <div class="preview-stage">
+              <div id="emptyState" class="empty-state">
+                <div class="empty-symbol" aria-hidden="true"><svg viewBox="0 0 64 64"><rect x="9" y="12" width="46" height="40" rx="8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="23" cy="25" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="m13 45 14-13 8 7 7-6 9 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                <strong>Your preview appears here</strong>
+                <p>The first inference may take a while while the model downloads.</p>
+              </div>
+              <div id="canvasWrap" class="canvas-wrap" hidden><canvas id="resultCanvas" aria-label="Locally processed image result"></canvas></div>
+              <video id="cameraVideo" class="camera-source" autoplay muted playsinline aria-hidden="true"></video>
+              <canvas id="frameCanvas" hidden></canvas>
+            </div>
+            <div class="preview-footer"><span id="resolutionLabel">No image loaded</span><span id="elapsedLabel">No inference yet</span></div>
+          </div>
+        </section>
+
+        <section class="limits">
+          <div><span class="limit-number">01</span><h3>Local by design</h3><p>Inference runs in your browser. No account, upload API, or analytics.</p></div>
+          <div><span class="limit-number">02</span><h3>Prototype, not a guarantee</h3><p>Segmentation can miss people or leave small visible edges. Review every result.</p></div>
+          <div><span class="limit-number">03</span><h3>Not system-wide</h3><p>This page filters selected media and its own camera preview, not other apps or the entire screen.</p></div>
+        </section>
+      </main>
+      <footer><span>Deku Foundation · Deku Satr</span><a href="https://github.com/Deku-Foundation/-deku-satr">Source code</a></footer>
+    </div>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

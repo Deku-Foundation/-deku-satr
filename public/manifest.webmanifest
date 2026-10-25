@@ -1,0 +1,12 @@
+{
+  "name": "Deku Satr",
+  "short_name": "Satr",
+  "description": "Local-first visual protection for selected images and camera preview.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f3f6fa",
+  "theme_color": "#101a2a",
+  "icons": [{ "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
