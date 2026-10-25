@@ -39,6 +39,9 @@ class LrasppPersonSegmenter(context: Context) : AutoCloseable {
     private val outputWidth: Int
     private val outputHeight: Int
     private val outputClasses: Int
+    private lateinit var inputBuffer: ByteBuffer
+    private lateinit var outputBuffer: ByteBuffer
+    private lateinit var pixels: IntArray
 
     init {
         modelFile = File(context.cacheDir, MODEL_FILE)
@@ -83,6 +86,17 @@ class LrasppPersonSegmenter(context: Context) : AutoCloseable {
         require(outputClasses == PERSON_CLASS_COUNT && outputWidth > 0 && outputHeight > 0) {
             "Unexpected LR-ASPP class layout."
         }
+        val inputCount = inputWidth.toLong() * inputHeight * 3L
+        val outputCount = outputWidth.toLong() * outputHeight * outputClasses
+        require(inputCount in 1..MAX_TENSOR_FLOATS && outputCount in 1..MAX_TENSOR_FLOATS) {
+            "The model tensor exceeds the configured memory limit."
+        }
+        // Reuse the large direct buffers across frames and tiles to avoid per-frame allocation spikes.
+        inputBuffer = ByteBuffer.allocateDirect(inputCount.toInt() * Float.SIZE_BYTES)
+            .order(ByteOrder.nativeOrder())
+        outputBuffer = ByteBuffer.allocateDirect(outputCount.toInt() * Float.SIZE_BYTES)
+            .order(ByteOrder.nativeOrder())
+        pixels = IntArray(inputWidth * inputHeight)
     }
 
     @Synchronized
@@ -140,15 +154,11 @@ class LrasppPersonSegmenter(context: Context) : AutoCloseable {
             if (scaled !== source && !scaled.isRecycled) scaled.recycle()
         }
 
-        val inputCount = inputWidth.toLong() * inputHeight * 3L
-        val outputCount = outputWidth.toLong() * outputHeight * outputClasses
-        require(inputCount in 1..MAX_TENSOR_FLOATS && outputCount in 1..MAX_TENSOR_FLOATS) {
-            "The model tensor exceeds the configured memory limit."
-        }
-        val input = ByteBuffer.allocateDirect(inputCount.toInt() * Float.SIZE_BYTES)
-            .order(ByteOrder.nativeOrder())
+        inputBuffer.clear()
+        outputBuffer.clear()
+        val input = inputBuffer
+        val output = outputBuffer
         val inputFloats = input.asFloatBuffer()
-        val pixels = IntArray(inputWidth * inputHeight)
         inputBitmap.getPixels(pixels, 0, inputWidth, 0, 0, inputWidth, inputHeight)
         inputBitmap.recycle()
         for (channel in 0..2) {
@@ -173,8 +183,7 @@ class LrasppPersonSegmenter(context: Context) : AutoCloseable {
         }
         inputFloats.rewind()
 
-        val output = ByteBuffer.allocateDirect(outputCount.toInt() * Float.SIZE_BYTES)
-            .order(ByteOrder.nativeOrder())
+        output.clear()
         try {
             interpreter.run(input, output)
         } catch (error: Exception) {
