@@ -182,6 +182,8 @@ class OverlayController(
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
             setPadding(dp(12), dp(8), dp(12), dp(8))
+            minHeight = dp(48)
+            minWidth = dp(112)
             background = GradientDrawable().apply {
                 setColor(Color.rgb(157, 53, 56))
                 cornerRadius = dp(12).toFloat()
