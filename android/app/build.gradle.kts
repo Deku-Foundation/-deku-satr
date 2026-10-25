@@ -55,7 +55,7 @@ val lrasppModelFile = layout.buildDirectory.file(
     "generated/lrasppAssets/lraspp_mobilenet_v3_large_dynamic_wi8_afp32.tflite",
 )
 android.sourceSets.getByName("main").assets.srcDir(
-    layout.buildDirectory.dir("generated/lrasppAssets"),
+    layout.buildDirectory.dir("generated/lrasppAssets").get().asFile,
 )
 
 val downloadLrasppModel by tasks.registering {
