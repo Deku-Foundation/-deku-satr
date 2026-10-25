@@ -1,6 +1,7 @@
 package org.dekufoundation.satr
 
 import android.graphics.Bitmap
+import android.graphics.Color
 import kotlin.math.min
 
 data class RenderedPrivacyMask(
