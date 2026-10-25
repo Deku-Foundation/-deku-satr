@@ -389,13 +389,51 @@ class ScreenCaptureService : Service() {
                     val mask = currentSegmenter.process(frame, tileWideFrames = FilterSettings.processingProfile.tileWideFrames)
                     if (stopping || frameGeneration != captureGeneration) return@execute
                     val frameNow = SystemClock.elapsedRealtime()
-                    val freshValues = synchronized(this) {
-                        temporalMaskSmoother.smooth(
-                            current = mask.confidence,
+                    val currentTargetMode = FilterSettings.personTargetMode
+                    val currentSelectedIds = FilterSettings.selectedPersonTrackIds
+                    synchronized(this) {
+                        if (currentTargetMode != lastTargetMode || currentSelectedIds != lastSelectedTrackIds) {
+                            lastTargetMode = currentTargetMode
+                            lastSelectedTrackIds = currentSelectedIds.toSet()
+                            lastGoodConfidence = null
+                            lastGoodMaskWidth = 0
+                            lastGoodMaskHeight = 0
+                            lastGoodMaskAtMs = 0L
+                            personFramesInARow = 0
+                            emptyFramesInARow = 0
+                            temporalMaskSmoother.reset()
+                        }
+                    }
+                    val detectedPeople = if (activePersonModelProfile == PersonModelProfile.RTMDET_INS_S) {
+                        personTrackAssociator.update(
+                            mask.instances.map { PersonBoxDetection(it.box, it.confidence) },
+                            frameNow,
+                        )
+                    } else emptyList()
+                    val freshValues = if (activePersonModelProfile == PersonModelProfile.RTMDET_INS_S) {
+                        val instanceMasks = mask.instances.zip(detectedPeople).map { (instance, tracked) ->
+                            PersonInstanceMask(tracked.trackId, mask.width, mask.height, instance.pixels, instance.confidence)
+                        }
+                        val safeMode = if (currentTargetMode == PersonTargetMode.MASK_SELECTED_ONLY && currentSelectedIds.isEmpty()) {
+                            PersonTargetMode.MASK_ALL
+                        } else currentTargetMode
+                        val targetMask = PersonTargetPolicy.composeMask(
                             width = mask.width,
                             height = mask.height,
-                            timestampMs = frameNow,
+                            instances = instanceMasks,
+                            mode = safeMode,
+                            selectedTrackIds = currentSelectedIds,
                         )
+                        FloatArray(targetMask.size) { if (targetMask[it]) 1f else 0f }
+                    } else {
+                        synchronized(this) {
+                            temporalMaskSmoother.smooth(
+                                current = mask.confidence,
+                                width = mask.width,
+                                height = mask.height,
+                                timestampMs = frameNow,
+                            )
+                        }
                     }
                     val threshold = FilterSettings.confidenceThreshold
                     val expansion = FilterSettings.maskExpansionRadius
@@ -436,7 +474,7 @@ class ScreenCaptureService : Service() {
                         maskWidth = mask.width,
                         maskHeight = mask.height,
                         blurRadius = FilterSettings.blurRadius,
-                        threshold = FilterSettings.confidenceThreshold,
+                        threshold = threshold,
                         maskExpansionRadius = expansion,
                         effect = FilterSettings.effect,
                     )
@@ -467,7 +505,11 @@ class ScreenCaptureService : Service() {
                             val next = previous.copy(
                                 phase = if (detected) SatrPhase.FILTERING else SatrPhase.NO_PERSON_DETECTED,
                                 detail = if (detected) {
-                                    "يُطبّق التمويه على المناطق التي يرصدها نموذج LR-ASPP."
+                                    if (activePersonModelProfile == PersonModelProfile.RTMDET_INS_S) {
+                                        "يُطبّق التمويه على الأشخاص المكتشفين وفق اختيارك اليدوي."
+                                    } else {
+                                        "يُطبّق التمويه على قناع الأشخاص الذي ينتجه النموذج الخفيف."
+                                    }
                                 } else {
                                     "لم تُرصد منطقة شخص بوضوح؛ قد يفوّت النموذج الأجسام الصغيرة."
                                 },
@@ -475,6 +517,10 @@ class ScreenCaptureService : Service() {
                                 lastInferenceMs = latencyMs,
                                 maskCoveragePercent = rendered.coveragePercent,
                                 modelReady = true,
+                                detectedPeople = detectedPeople,
+                                personModelProfile = activePersonModelProfile,
+                                personTargetMode = FilterSettings.personTargetMode,
+                                selectedTrackIds = FilterSettings.selectedPersonTrackIds,
                             )
                             lastSuccessfulFrameMs = SystemClock.elapsedRealtime()
                             val shouldUpdateMask =
