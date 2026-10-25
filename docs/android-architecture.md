@@ -124,3 +124,17 @@ References:
 - https://developer.android.com/jetpack/androidx/releases/compose-ui
 - https://developer.android.com/jetpack/androidx/releases/compose-foundation
 - https://developer.android.com/develop/ui/compose/setup-compose-dependencies-and-compiler
+
+## Satr Blur visual identity and live-mask stability
+
+The native UI uses the supplied product palette: deep green `#12372A`, leaf green `#1F7A58`, warm gold `#D9B45A`, and pale green-white `#F4F7F3`. The mihrab/descending-layer mark is implemented as an Android vector drawable so it remains sharp at launcher and UI sizes. Product identity is “ستر بلور / Satr Blur”; Deku Foundation is credited separately rather than being conflated with the app name.
+
+The previous build workflow requested `platforms;android-37`, which the configured SDK repository did not provide and caused CI to stop before Gradle ran. The build now targets the available stable Android 36 platform while using AGP 9.3.0 and Gradle 9.5.0, the documented compatibility pair. Revisit compileSdk 37 when that platform package is available in the CI SDK repository.
+
+For live video, the renderer now retains the last published mask across up to two transient empty/noisy frames and clears it after three consecutive empty frames. This avoids immediately replacing a visible mask with a transparent one on every temporary segmentation miss. Empty masks also bypass full-frame pixel extraction and CPU blur allocations. This is a flicker/performance mitigation, not proof that the separate overlay is excluded from MediaProjection; validate capture feedback and mask stability on physical devices.
+
+References:
+- AGP 9.3 compatibility table: https://developer.android.com/build/releases/agp-9-3-0-release-notes
+- AGP-to-Gradle compatibility table: https://developer.android.com/build/releases/about-agp
+- ML Kit stream mode, raw masks and frame throttling: https://developers.google.com/ml-kit/vision/selfie-segmentation/android
+- Android touch-target guidance: https://developer.android.com/develop/ui/compose/accessibility/api-defaults
