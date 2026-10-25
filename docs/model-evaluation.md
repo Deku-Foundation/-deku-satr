@@ -17,7 +17,7 @@ A useful filter needs a conservative pixel mask for each person in a still image
 | `Xenova/segformer-b0-finetuned-ade-512-512` | Browser-ready ONNX model for Transformers.js; upstream card says 3.75M parameters and the ADE20K label set includes `person`. The ONNX repository listing is about 27.7 MB overall. | Temporary web baseline only. Upstream NVIDIA model card lists license `other`; do not bundle or ship the weights until the exact terms are reviewed. Actual download size depends on the selected ONNX variant and cache. |
 | MediaPipe Selfie Segmenter | Official Google guide describes 256×256 float16 models and reports about 33.46 ms CPU latency on Pixel 6 for the square model. | Speed reference; design assumes a prominent selfie subject, not guaranteed multi-person segmentation. |
 | ML Kit Selfie Segmentation 16.0.0-beta6 (Android APK) | Google documents stream mode, a confidence mask, static bundled dependency and about 4.5 MB added app size; 25–65 ms reference latency on Pixel 4 depending on input size. | **Integrated native baseline**: frames are downscaled to 640 px, only one inference runs at a time, masks are thresholded/dilated, and a two-pass CPU blur is drawn over the mask. Full-screen screenshot quality is unvalidated. |
-| TorchVision LR-ASPP + MobileNetV3-Large, LiteRT conversion | LiteRT Community has converted regular and dynamic INT8-compatible artifacts. The architecture is a compact semantic segmentation candidate. | Evaluate as a smaller Android candidate after confirming class mapping, license, output shape, and target-device performance. |
+| TorchVision LR-ASPP + MobileNetV3-Large, LiteRT conversion | LiteRT Community lists a dynamic weight-only INT8 / FP32-activation artifact at about 3.52 MB; the file is pinned by SHA-256 in Satr. | **Integrated on dev as an experimental candidate** using LiteRT/TFLite Interpreter. Accuracy, device performance and distribution licensing remain release gates. |
 | YOLACT ResNet-50 LiteRT | Model card documents instance masks and MIT source weights; reports roughly 38–41 ms GPU graph latency on recent devices. | Keep as an accuracy/reference baseline, not the low-end default: model artifact is about 125 MB. |
 | MobileSAM2 (July 2026 research) | Research explores distilling SAM 2 into smaller image/video segmentation models for resource-limited devices. | Do not adopt until usable checkpoints, licensing, conversion, and real low-end Android results are verified. |
 
@@ -42,7 +42,7 @@ Evaluate all models on the same versioned test set and hardware:
 
 ## Technical direction
 
-The Android APK now embeds ML Kit Selfie Segmentation 16.0.0-beta6 as the first offline baseline. Its stream-mode person mask feeds a bounded in-memory blur pipeline; input edge is capped at 640 px and frame processing is single-flight/throttled. LiteRT `CompiledModel` remains a candidate for a later controlled comparison on the same screen-frame dataset, not an additional runtime to add without measured benefit.
+The Android APK now uses LR-ASPP + MobileNetV3-Large through LiteRT/TFLite Interpreter. The model artifact is downloaded during Gradle builds from a pinned revision and checked against SHA-256 before packaging. Live frames and still images share the same engine. This is an experimental integration and has not yet passed a labelled benchmark or real-device test.
 
 ## Native Android research refresh (2026-10-25)
 
@@ -103,7 +103,7 @@ This release improves temporal stability and effect selection; it does **not** c
 - Delay recycling replaced overlay bitmaps to reduce the chance that the renderer reads a bitmap while it is being recycled. Solid-cover mode uses an opaque overlay; Android may block interaction with the app underneath, so the visible Stop control remains important.
 - Add blur, pixelation, and solid-cover render modes without adding another runtime dependency. The selected effect is stored locally.
 
-### Model replacement gate remains closed
+### Historical model replacement gate (superseded by 0.5.1 integration)
 
 The current model is still a portrait-oriented person segmenter and cannot infer a person's gender reliably. We have not integrated LR-ASPP/MobileNetV3 or MediaPipe's multi-class model because their end-to-end screen-capture behavior, model artifact provenance/licence, preprocessing/output contract, and low-end-device performance have not yet been validated in this repository. The MediaPipe multiclass model is substantially slower on CPU in Google's published Pixel 6 benchmark, so it is not an automatic upgrade for low-power phones. No 99% accuracy or complete-coverage claim is justified.
 
@@ -128,3 +128,16 @@ The model does **not** infer gender. Hair length, hairstyle, clothing and appear
 Official references:
 - https://developers.google.com/ml-kit/vision/selfie-segmentation/android
 - https://developers.google.com/edge/mediapipe/solutions/vision/image_segmenter
+
+
+## Active model state (0.5.1, 2026-10-25)
+
+The dev branch has switched from ML Kit Selfie Segmentation to `litert-community/lraspp_mobilenet_v3_large_dynamic_wi8_afp32.tflite` at immutable revision `ac7d12fd05b7542cd884c85968b3193c8f8e4fa7`. Artifact size is 3,519,728 bytes; SHA-256 is `1a0a31a925f1c8e2abb76e96c4bd4bdcbc625f8389f1029530007fded4ea9ed9`. Gradle verifies this digest before packaging.
+
+Runtime: LiteRT/TFLite Interpreter 1.4.2, 3 threads with NNAPI requested, tensor layout validation, ImageNet RGB normalization, aspect-preserving letterbox, and VOC person class index 15. The shared mask is converted to a confidence map and then passed through the existing threshold/dilation/effect pipeline. Still images use the same segmenter.
+
+Important caveats:
+- The artifact's model card does not declare an explicit license field. The integration is on the dev/evaluation branch; do not publish a release APK until model provenance and distribution rights are reviewed.
+- The artifact was validated by its publisher with the LiteRT GPU compatibility profile; Satr's own CPU/NNAPI behavior is not yet benchmarked. Inference compatibility and performance must be confirmed on physical devices.
+- Semantic segmentation identifies the person class but does not provide separate per-person masks or gender. Hairstyle, hair length and clothing are not gender ground truth.
+- No 99% claim is supported. CI can prove compilation and unit tests, not model recall or stable full-screen behavior.
