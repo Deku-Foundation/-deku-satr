@@ -52,6 +52,13 @@ class LrasppPersonSegmenter(context: Context) : AutoCloseable {
             modelFile,
             Interpreter.Options().setNumThreads(3).setUseNNAPI(true),
         )
+        interpreter.allocateTensors()
+        require(interpreter.getInputTensor(0).dataType() == org.tensorflow.lite.DataType.FLOAT32) {
+            "The LR-ASPP input tensor must be float32."
+        }
+        require(interpreter.getOutputTensor(0).dataType() == org.tensorflow.lite.DataType.FLOAT32) {
+            "The LR-ASPP output tensor must be float32."
+        }
         inputShape = interpreter.getInputTensor(0).shape()
         outputShape = interpreter.getOutputTensor(0).shape()
         require(inputShape.size == 4 && inputShape[0] == 1) { "Unsupported model input tensor." }
@@ -147,6 +154,7 @@ class LrasppPersonSegmenter(context: Context) : AutoCloseable {
                 var maxLogit = Float.NEGATIVE_INFINITY
                 for (classIndex in 0 until outputClasses) {
                     val value = logits.get(outputIndex(classIndex, ox, oy))
+                    require(value.isFinite()) { "The model returned a non-finite logit." }
                     if (value > maxLogit) maxLogit = value
                 }
                 var denominator = 0.0
