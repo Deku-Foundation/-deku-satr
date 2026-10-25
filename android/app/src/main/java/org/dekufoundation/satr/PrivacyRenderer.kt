@@ -48,6 +48,13 @@ object PrivacyRenderer {
             radiusY = maskExpansionRadius.coerceIn(0, 6),
         )
         val coverage = PersonMaskMath.coveragePercent(binary)
+        if (coverage == 0) {
+            // Avoid allocating source, blur and output pixel arrays for empty masks.
+            return RenderedPrivacyMask(
+                Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888),
+                coverage,
+            )
+        }
 
         val sourcePixels = IntArray(width * height)
         source.getPixels(sourcePixels, 0, width, 0, 0, width, height)
