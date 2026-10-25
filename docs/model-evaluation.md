@@ -86,7 +86,7 @@ Sources:
 - https://huggingface.co/litert-community/lraspp_mobilenet_v3_large/blob/main/lraspp_mobilenet_v3_large.tflite
 - https://github.com/pytorch/vision/blob/main/torchvision/models/segmentation/lraspp.py
 
-This is a promising general semantic person-mask candidate, but it is NOT integrated or benchmarked in Satr. The converted model card lacks sufficient deployment details for preprocessing, tensor shapes/layout, person class index, and exact binary/license provenance. We will not ship it until its immutable revision/hash and license are verified, the tensor contract and normalization are confirmed, and CPU execution is validated.
+This candidate is now integrated experimentally on `dev` with an immutable upstream revision, a SHA-256-verified model artifact, runtime tensor-shape checks, ImageNet normalization, the VOC person-class mapping, and CPU fallback if NNAPI inference fails. This verifies packaging and runtime compatibility only—not detection accuracy. The app still requires license review and a labelled screen/video benchmark before production release.
 
 Compare it with ML Kit on the same labelled screen sample set including multiple people, short/long hair, covered heads, different clothing/skin tones, dark screens, small/distant people, occlusion, motion, animation and rotation. Report person recall/miss rate, mask leakage, false-positive area, p50/p95 latency, peak RAM, sustained FPS, temperature, battery and APK size. Published timings on different devices are not directly comparable.
 
