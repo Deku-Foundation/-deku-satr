@@ -44,6 +44,23 @@ jobs:
       - name: Unit tests and debug APK
         run: gradle --no-daemon -p android testDebugUnitTest assembleDebug
 
+      - name: Audit merged manifest for network permission
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest="$(find android/app/build/intermediates/merged_manifest android/app/build/intermediates/merged_manifests -name AndroidManifest.xml -print -quit 2>/dev/null || true)"
+          if [[ -z "$manifest" ]]; then
+            echo "Could not locate the merged debug manifest."
+            find android/app/build/intermediates -iname '*manifest*' -maxdepth 6
+            exit 1
+          fi
+          if grep -q 'android.permission.INTERNET' "$manifest"; then
+            echo "Unexpected INTERNET permission in merged app manifest: $manifest"
+            cat "$manifest"
+            exit 1
+          fi
+          echo "Merged manifest has no INTERNET permission: $manifest"
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
         with:
