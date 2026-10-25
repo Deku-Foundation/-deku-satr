@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import kotlin.math.roundToInt
 
 enum class PrivacyEffect { BLUR, PIXELATE, COVER }
+enum class ProcessingProfile(val maxEdge: Int, val frameIntervalMs: Long) { POWER_SAVER(480, 200L), BALANCED(640, 140L), DETAIL(720, 100L) }
 
 object FilterSettings {
     const val MIN_BLUR_RADIUS = 4
@@ -21,6 +22,9 @@ object FilterSettings {
 
     @Volatile
     var effect: PrivacyEffect = PrivacyEffect.BLUR
+
+    @Volatile
+    var processingProfile: ProcessingProfile = ProcessingProfile.BALANCED
 
     @Volatile
     var blurStrengthPercent: Int = DEFAULT_BLUR_STRENGTH_PERCENT
@@ -57,6 +61,7 @@ object FilterSettings {
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         preferences = prefs
         effect = runCatching { PrivacyEffect.valueOf(prefs.getString("privacy_effect", PrivacyEffect.BLUR.name) ?: PrivacyEffect.BLUR.name) }.getOrDefault(PrivacyEffect.BLUR)
+        processingProfile = runCatching { ProcessingProfile.valueOf(prefs.getString("processing_profile", ProcessingProfile.BALANCED.name) ?: ProcessingProfile.BALANCED.name) }.getOrDefault(ProcessingProfile.BALANCED)
         blurStrengthPercent = prefs.getInt("blur_strength_percent", DEFAULT_BLUR_STRENGTH_PERCENT)
         confidenceThreshold = prefs.getFloat("confidence_threshold", DEFAULT_CONFIDENCE_THRESHOLD)
         maskExpansionRadius = prefs.getInt("mask_expansion_radius", DEFAULT_MASK_EXPANSION_RADIUS)
@@ -64,6 +69,7 @@ object FilterSettings {
 
     fun resetToDefaults() {
         effect = PrivacyEffect.BLUR
+        processingProfile = ProcessingProfile.BALANCED
         blurStrengthPercent = DEFAULT_BLUR_STRENGTH_PERCENT
         confidenceThreshold = DEFAULT_CONFIDENCE_THRESHOLD
         maskExpansionRadius = DEFAULT_MASK_EXPANSION_RADIUS
@@ -76,6 +82,7 @@ object FilterSettings {
             }
         prefs.edit()
             .putString("privacy_effect", effect.name)
+            .putString("processing_profile", processingProfile.name)
             .putInt("blur_strength_percent", blurStrengthPercent)
             .putFloat("confidence_threshold", confidenceThreshold)
             .putInt("mask_expansion_radius", maskExpansionRadius)
