@@ -16,6 +16,7 @@ A useful filter needs a conservative pixel mask for each person in a still image
 |---|---|---|
 | `Xenova/segformer-b0-finetuned-ade-512-512` | Browser-ready ONNX model for Transformers.js; upstream card says 3.75M parameters and the ADE20K label set includes `person`. The ONNX repository listing is about 27.7 MB overall. | Temporary web baseline only. Upstream NVIDIA model card lists license `other`; do not bundle or ship the weights until the exact terms are reviewed. Actual download size depends on the selected ONNX variant and cache. |
 | MediaPipe Selfie Segmenter | Official Google guide describes 256×256 float16 models and reports about 33.46 ms CPU latency on Pixel 6 for the square model. | Speed reference; design assumes a prominent selfie subject, not guaranteed multi-person segmentation. |
+| ML Kit Selfie Segmentation 16.0.0-beta6 (Android APK) | Google documents stream mode, a confidence mask, static bundled dependency and about 4.5 MB added app size; 25–65 ms reference latency on Pixel 4 depending on input size. | **Integrated native baseline**: frames are downscaled to 640 px, only one inference runs at a time, masks are thresholded/dilated, and a two-pass CPU blur is drawn over the mask. Full-screen screenshot quality is unvalidated. |
 | TorchVision LR-ASPP + MobileNetV3-Large, LiteRT conversion | LiteRT Community has converted regular and dynamic INT8-compatible artifacts. The architecture is a compact semantic segmentation candidate. | Evaluate as a smaller Android candidate after confirming class mapping, license, output shape, and target-device performance. |
 | YOLACT ResNet-50 LiteRT | Model card documents instance masks and MIT source weights; reports roughly 38–41 ms GPU graph latency on recent devices. | Keep as an accuracy/reference baseline, not the low-end default: model artifact is about 125 MB. |
 | MobileSAM2 (July 2026 research) | Research explores distilling SAM 2 into smaller image/video segmentation models for resource-limited devices. | Do not adopt until usable checkpoints, licensing, conversion, and real low-end Android results are verified. |
@@ -41,7 +42,7 @@ Evaluate all models on the same versioned test set and hardware:
 
 ## Technical direction
 
-For Android, evaluate the current LiteRT `CompiledModel` API before choosing a runtime. It offers CPU/GPU/NPU execution paths, with a CPU fallback required for broad compatibility. A first native implementation should use Kotlin + CameraX, keep frames in memory, and adapt the frame rate to latency and thermal state.
+The Android APK now embeds ML Kit Selfie Segmentation 16.0.0-beta6 as the first offline baseline. Its stream-mode person mask feeds a bounded in-memory blur pipeline; input edge is capped at 640 px and frame processing is single-flight/throttled. LiteRT `CompiledModel` remains a candidate for a later controlled comparison on the same screen-frame dataset, not an additional runtime to add without measured benefit.
 
 ## Native Android research refresh (2026-10-25)
 
@@ -67,7 +68,7 @@ No model should be selected based solely on benchmark numbers published for anot
 
 ### Screen capture is a separate engineering risk
 
-The native foundation currently establishes the consent-bound MediaProjection session and visible overlay; it does not read pixels or run a model. Before measuring inference, test whether the app's own overlay is included in subsequent MediaProjection frames. A feedback loop can reprocess the previously blurred overlay and produce ghosting or unstable masks. If this cannot be controlled reliably on a target device, that device must be marked unsupported rather than advertised as protected.
+The native path now reads reduced screen frames, runs the bundled model, and renders its person mask through a separate touch-transparent overlay. This is an integrated experimental pipeline, not a validated system-wide filter. The app's own overlay may be included in subsequent MediaProjection frames, reprocessing the previous blur and producing ghosting or unstable masks. Physical-device tests must determine whether that feedback occurs and whether it is controllable; unsupported configurations must be labelled rather than advertised as protected.
 
 Official platform references:
 - https://developer.android.com/media/grow/media-projection

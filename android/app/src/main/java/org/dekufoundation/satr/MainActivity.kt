@@ -361,7 +361,7 @@ private fun SatrDashboard(
             SafetyCard()
             HowItWorksCard()
             Text(
-                text = "دِكو سَتر · معالجة محلية · إصدار تجريبي 0.2.0",
+                text = "دِكو سَتر · معالجة محلية · إصدار تجريبي 0.3.0",
                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
