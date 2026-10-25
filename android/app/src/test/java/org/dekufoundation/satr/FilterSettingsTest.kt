@@ -46,6 +46,15 @@ class FilterSettingsTest {
     }
 
     @Test
+    fun lowLatencyProfileUsesSinglePassAndShorterAdmissionInterval() {
+        FilterSettings.processingProfile = ProcessingProfile.LOW_LATENCY
+        assertEquals(360, FilterSettings.processingProfile.maxEdge)
+        assertEquals(80L, FilterSettings.processingProfile.frameIntervalMs)
+        assertEquals(false, FilterSettings.processingProfile.tileWideFrames)
+        FilterSettings.resetToDefaults()
+    }
+
+    @Test
     fun maskExpansionIsBounded() {
         FilterSettings.maskExpansionRadius = -4
         assertEquals(0, FilterSettings.maskExpansionRadius)

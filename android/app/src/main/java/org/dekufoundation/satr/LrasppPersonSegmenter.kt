@@ -219,11 +219,21 @@ class LrasppPersonSegmenter(context: Context) : AutoCloseable {
                 val ox = x + cropLeft
                 val oy = y + cropTop
                 var maxLogit = Float.NEGATIVE_INFINITY
+                var personLogit = Float.NEGATIVE_INFINITY
                 for (classIndex in 0 until outputClasses) {
                     val value = logits.get(outputIndex(classIndex, ox, oy))
                     require(value.isFinite()) { "The model returned a non-finite logit." }
                     if (value > maxLogit) maxLogit = value
+                    if (classIndex == PERSON_CLASS_INDEX) personLogit = value
                 }
+
+                // Thresholds never drop below 0.25. A person logit at least ln(4)
+                // below the maximum has probability <= 0.2, so it cannot pass the mask.
+                if (!PersonLogitMath.canReachMinimumThreshold(personLogit, maxLogit)) {
+                    confidence[y * cropWidth + x] = 0f
+                    continue
+                }
+
                 var denominator = 0.0
                 var personNumerator = 0.0
                 for (classIndex in 0 until outputClasses) {

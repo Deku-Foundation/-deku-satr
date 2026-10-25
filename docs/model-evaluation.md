@@ -199,3 +199,14 @@ An instance-mask model alone cannot decide which people the user wants blurred. 
 Source: https://huggingface.co/iFurySt/fastface
 
 No gender-selective mode is exposed as functional yet. The current mask is semantic and unions all persons, so it cannot correctly apply one blur policy per individual. Before enabling “blur men / blur women” modes, the instance model and classifier must be combined and tested on labeled phone-screen frames—including long-haired men, short-haired women, multiple/distant people, faces hidden, motion blur, and different brightness/orientation. The default must stay “blur all detected people” whenever a per-instance classification is low confidence or missing. Do not market 99% accuracy without independent, held-out measurements.
+
+
+## Live-path optimization (0.5.3)
+
+The LR-ASPP decoder checks the person logit against the maximum class logit before calculating a 21-class softmax. The UI minimum confidence threshold is 0.25. If the person logit is at least ln(4) below the maximum, its probability upper bound is 0.2, so it cannot pass any available threshold. Those background pixels skip the exponentials; candidate pixels retain the original softmax calculation.
+
+The low-latency capture profile uses a 360 px long edge, an 80 ms minimum admission interval, and one full-frame inference without tiling. It reduces model calls per captured frame but loses spatial detail on small or distant people. The configured interval is a throttle, not a promised frame rate. Inference time, rendering and device load determine actual FPS; no sub-millisecond or 99% claim is made.
+
+During warm-up, the full-screen green placeholder is gone. The control panel says filtering is not active until the first successful mask. A real inference error or stale session still uses an opaque fail-closed surface, now charcoal. The control panel starts compact and reveals details on tap.
+
+Gender classification is not added. The current semantic mask cannot separate individuals. Selective targeting requires a compatible instance mask model and explicit user selection; see issue #11.

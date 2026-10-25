@@ -12,12 +12,15 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.TextView
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 class OverlayController(
@@ -84,11 +87,21 @@ class OverlayController(
         }
     }
 
+    fun showPreparing(detail: String) {
+        mainHandler.post {
+            filterView?.clearMask()
+            setFilterWindowAlpha(NORMAL_FILTER_ALPHA)
+            controlTitle?.text = "ستر · جارٍ التحضير"
+            controlDetail?.text = detail.take(120)
+            controlDetail?.setTextColor(Color.rgb(255, 215, 140))
+        }
+    }
+
     fun showFailClosed(detail: String) {
         mainHandler.post {
             setFilterWindowAlpha(FAIL_CLOSED_ALPHA)
             filterView?.showFailClosed()
-            controlTitle?.text = "ستر بلور · إخفاء احتياطي"
+            controlTitle?.text = "ستر · إخفاء احتياطي"
             controlDetail?.text = detail.take(120)
             controlDetail?.setTextColor(Color.rgb(255, 215, 140))
         }
@@ -167,7 +180,7 @@ class OverlayController(
         val panel = LinearLayout(appContext).apply {
             orientation = LinearLayout.VERTICAL
             layoutDirection = View.LAYOUT_DIRECTION_RTL
-            setPadding(dp(14), dp(10), dp(14), dp(9))
+            setPadding(dp(8), dp(7), dp(8), dp(7))
             background = GradientDrawable().apply {
                 setColor(Color.rgb(18, 55, 42))
                 cornerRadius = dp(18).toFloat()
@@ -178,29 +191,33 @@ class OverlayController(
         }
 
         val title = TextView(appContext).apply {
-            text = "ستر بلور · جارٍ التحضير"
-            textSize = 13f
+            text = "ستر · جارٍ التحضير"
+            textSize = 11.5f
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
             setPadding(dp(2), dp(1), dp(2), dp(3))
-            contentDescription = "حالة الفلترة؛ اسحب هذا العنوان لتحريك اللوحة"
+            contentDescription = "حالة الفلترة؛ اسحب للتحريك أو اضغط لعرض التفاصيل"
             setOnTouchListener(DragTouchListener())
         }
         val detail = TextView(appContext).apply {
-            text = "لا تغلق هذا المؤشر أثناء الالتقاط"
+            text = "لا توجد فلترة فعّالة بعد."
             textSize = 10.5f
+            maxLines = 3
             setTextColor(Color.rgb(230, 239, 233))
             setPadding(dp(2), dp(1), dp(2), dp(5))
+            visibility = View.GONE
         }
         val stop = TextView(appContext).apply {
-            text = "إيقاف الجلسة"
-            textSize = 12f
+            text = "إيقاف"
+            textSize = 11.5f
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
-            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setPadding(dp(8), dp(4), dp(8), dp(4))
             minHeight = dp(48)
-            minWidth = dp(112)
+            minWidth = dp(80)
             background = GradientDrawable().apply {
                 setColor(Color.rgb(157, 53, 56))
                 cornerRadius = dp(12).toFloat()
@@ -242,6 +259,8 @@ class OverlayController(
         private var startX = 0
         private var startY = 0
         private var dragging = false
+        private var moved = false
+        private val touchSlop = ViewConfiguration.get(appContext).scaledTouchSlop
 
         override fun onTouch(view: View, event: MotionEvent): Boolean {
             val params = controlParams ?: return false
@@ -252,22 +271,40 @@ class OverlayController(
                     startX = params.x
                     startY = params.y
                     dragging = true
+                    moved = false
                     return true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     if (!dragging) return false
                     val dx = (event.rawX - startRawX).roundToInt()
                     val dy = (event.rawY - startRawY).roundToInt()
-                    params.x = (startX - dx).coerceAtLeast(0)
-                    params.y = (startY + dy).coerceAtLeast(0)
-                    try {
-                        controlPanel?.let { windowManager.updateViewLayout(it, params) }
-                    } catch (_: IllegalArgumentException) {
-                        dragging = false
+                    if (!moved && (abs(dx) > touchSlop || abs(dy) > touchSlop)) moved = true
+                    if (moved) {
+                        params.x = (startX - dx).coerceAtLeast(0)
+                        params.y = (startY + dy).coerceAtLeast(0)
+                        try {
+                            controlPanel?.let { windowManager.updateViewLayout(it, params) }
+                        } catch (_: IllegalArgumentException) {
+                            dragging = false
+                        }
                     }
                     return true
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                MotionEvent.ACTION_UP -> {
+                    if (!moved) {
+                        controlDetail?.let { detail ->
+                            detail.visibility = if (detail.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+                            try {
+                                controlPanel?.let { windowManager.updateViewLayout(it, params) }
+                            } catch (_: IllegalArgumentException) {
+                                // The system may have removed the overlay while the user tapped it.
+                            }
+                        }
+                    }
+                    dragging = false
+                    return true
+                }
+                MotionEvent.ACTION_CANCEL -> {
                     dragging = false
                     return true
                 }
@@ -319,6 +356,14 @@ class OverlayController(
             if (previous != null && previous !== bitmap) recycleAfterDraw(previous)
         }
 
+        fun clearMask() {
+            val previous = maskBitmap
+            maskBitmap = null
+            failClosed = false
+            invalidate()
+            if (previous != null) recycleAfterDraw(previous)
+        }
+
         fun showFailClosed() {
             val previous = maskBitmap
             maskBitmap = null
@@ -345,7 +390,7 @@ class OverlayController(
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
             if (failClosed) {
-                canvas.drawColor(Color.rgb(18, 55, 42))
+                canvas.drawColor(Color.rgb(24, 28, 27))
                 return
             }
             val bitmap = maskBitmap ?: return

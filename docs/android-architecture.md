@@ -159,3 +159,12 @@ Release gates still open:
 The live pipeline holds a previous mask only briefly (250 ms) when the fresh semantic result is effectively empty and dimensions still match. This reduces a single-frame dropout without retaining a stale mask for most of a second, which can cause visible trails when people move. It is a trade-off, not optical-flow tracking; test on real devices before claiming flicker-free operation.
 
 The current LR-ASPP output is a single semantic mask for the person class. It cannot provide per-person controls or gender categories. Selective policies require a separately licensed instance-segmentation backend and explicit user-selected target labels; visual gender inference from hair/clothing is not implemented. See the model evaluation decision and its licensing notes.
+
+
+## Low-latency profile and startup behavior (0.5.3)
+
+- Low-latency: 360 px long edge, one full-frame inference without tiling, 80 ms minimum admission interval. This is not a guaranteed frame rate and may miss small or distant people.
+- Power saver: 480 px without tiling. Balanced: 640 px with tiling on tall/wide frames. Detail: 720 px with tiling and a higher processing cost.
+- The decoder skips full softmax only when a mathematical upper bound proves the person probability cannot pass the app's minimum threshold. Pixels that might be accepted retain the original softmax.
+- During model warm-up the overlay stays clear and the compact indicator says protection is not active yet. Inference failure or stale output triggers an opaque charcoal fallback; the stop panel remains available.
+- Tap the status title to show or hide details; drag it to move the panel. The Stop touch target remains at least 48 dp high.
