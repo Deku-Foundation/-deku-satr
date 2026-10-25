@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.projection.MediaProjectionConfig
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
@@ -206,24 +207,43 @@ class MainActivity : ComponentActivity() {
         SessionStatus.publish(
             SatrSessionSnapshot(
                 phase = SatrPhase.WAITING_PERMISSION,
-                detail = "وافق على مشاركة الشاشة في نافذة Android التالية لبدء الجلسة.",
+                detail = "وافق على التقاط الشاشة كاملة في نافذة Android لفلترة المحتوى عبر التطبيقات.",
             ),
         )
-        captureLauncher.launch(manager.createScreenCaptureIntent())
+        // Cross-app filtering needs the whole display, not one selected app window.
+        // Android still shows its normal consent UI before capture begins.
+        val captureIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            manager.createScreenCaptureIntent(MediaProjectionConfig.createConfigForDefaultDisplay())
+        } else {
+            manager.createScreenCaptureIntent()
+        }
+        captureLauncher.launch(captureIntent)
     }
 
     private fun startCaptureService(resultCode: Int, data: Intent) {
-        val metrics = DisplayMetrics()
-        @Suppress("DEPRECATION")
-        (getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay.getRealMetrics(metrics)
-        val size = CaptureSizePolicy.downsample(metrics.widthPixels, metrics.heightPixels)
+        val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val displayWidth: Int
+        val displayHeight: Int
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = windowManager.maximumWindowMetrics.bounds
+            displayWidth = bounds.width()
+            displayHeight = bounds.height()
+        } else {
+            val metrics = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            windowManager.defaultDisplay.getRealMetrics(metrics)
+            displayWidth = metrics.widthPixels
+            displayHeight = metrics.heightPixels
+        }
+        val size = CaptureSizePolicy.downsample(displayWidth, displayHeight)
+        val densityDpi = resources.configuration.densityDpi
         val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
             action = ScreenCaptureService.ACTION_START
             putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, resultCode)
             putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, data)
             putExtra(ScreenCaptureService.EXTRA_CAPTURE_WIDTH, size.width)
             putExtra(ScreenCaptureService.EXTRA_CAPTURE_HEIGHT, size.height)
-            putExtra(ScreenCaptureService.EXTRA_DENSITY_DPI, metrics.densityDpi)
+            putExtra(ScreenCaptureService.EXTRA_DENSITY_DPI, densityDpi)
         }
 
         SessionStatus.publish(

@@ -11,7 +11,7 @@ Deku Satr is being developed as a native Android utility that attempts to mask p
 Path: android/
 
 - Kotlin app with an Arabic-first, responsive Material 3 interface and light/dark system themes.
-- Explicit overlay permission and Android MediaProjection consent for every capture session.
+- Explicit overlay permission and Android MediaProjection consent for every capture session; Android 14+ requests the full default display rather than a single app window.
 - A visible media-projection foreground service, notification stop action, draggable floating stop panel, and a full-screen transparent mask layer that does not accept touches.
 - Bundled model: ML Kit Selfie Segmentation 16.0.0-beta6. The model assets are statically linked at build time; the app does not download model weights on first launch.
 - Local in-memory processing: screen frames are downscaled to a 640 px longest edge, decoded from RGBA with explicit channel handling, inference is throttled, new frames are dropped while the model is busy, and masked areas are blurred with a bounded two-pass CPU blur.

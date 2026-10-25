@@ -36,7 +36,10 @@ A checked box means code or documentation has been added; it does not mean devic
 - [x] Android unit tests and CI audit that rejects a merged INTERNET permission.
 - [ ] Test installation and the capture/overlay composition loop on actual phones and Android versions.
 - [ ] Confirm whether the overlay re-enters MediaProjection frames and characterize any temporal feedback/ghosting.
-- [ ] Handle rotation/display-size changes and system UI/window insets throughout the session.
+- [x] Request the default display (not one app window) on Android 14+ while retaining the system consent prompt.
+- [x] Resize/replace the ImageReader surface on MediaProjection size-change callbacks and invalidate old inference generations.
+- [x] Use maximumWindowMetrics on Android 11+ and explicitly declare the activity resizable.
+- [ ] Finish system UI inset and OEM-specific orientation testing on physical devices.
 - [x] Cap normal filter overlay opacity to Android's 0.8 pass-through limit and switch to opaque cover only in fail-closed mode.
 - [ ] Expand tests for the renderer, resource teardown, permission revocation, and stale frames.
 - [ ] Measure battery/thermal performance on low-end phones and tune the sampling interval.

@@ -41,3 +41,10 @@ Android treats TYPE_APPLICATION_OVERLAY windows as untrusted for pass-through to
 If capture/inference fails, the filter layer switches to alpha 1.0 and draws an opaque cover. That can block touches to the underlying app until the user taps the always-on-top Stop control. The control panel is a separate window added after the filter surface so it remains above the cover.
 
 Source: https://developer.android.com/reference/android/view/WindowManager.LayoutParams
+
+
+## Full-display scope and resizing
+
+On Android 14+, Satr passes `createConfigForDefaultDisplay()` to the consent intent. The system still requests explicit user consent, but the app requests the entire default display because single-app capture would not filter other apps. Device manufacturers can still constrain this behavior, and secure/DRM windows may remain unavailable.
+
+The service uses the platform `onCapturedContentResize()` callback to update the bounded ImageReader surface and existing virtual display when the captured content changes size (including orientation changes). Old inference generations are discarded so a late mask from the previous size cannot replace the current session state.
