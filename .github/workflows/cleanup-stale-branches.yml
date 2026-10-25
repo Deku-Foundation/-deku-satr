@@ -1,0 +1,50 @@
+name: One-time stale branch cleanup
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - ".github/workflows/cleanup-stale-branches.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: startsWith(github.event.head_commit.message, 'chore(repo): remove stale refs')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete only the approved obsolete refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          stale_branches=(
+            "dependabot/gradle/android/com.android.application-9.4.1"
+            "dependabot/npm_and_yarn/huggingface/transformers-4.3.1"
+            "dependabot/npm_and_yarn/vite-8.3.5"
+            "dependabot/npm_and_yarn/vite-plugin-pwa-2.0.0"
+            "dependabot/npm_and_yarn/vitest-5.0.5"
+            "feat/android-native-foundation"
+          )
+
+          for branch in "${stale_branches[@]}"; do
+            case "$branch" in
+              main|dev)
+                echo "Refusing to delete protected branch name: $branch"
+                exit 1
+                ;;
+            esac
+            echo "Deleting obsolete branch: $branch"
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$branch"
+          done
+
+          remaining="$(gh api "repos/$GITHUB_REPOSITORY/branches?per_page=100" --jq '.[].name' | grep -Ev '^(main|dev)$' || true)"
+          if [[ -n "$remaining" ]]; then
+            echo "Unexpected branches remain:"
+            printf '%s\n' "$remaining"
+            exit 1
+          fi
+          echo "Branch audit passed: only main and dev remain."
