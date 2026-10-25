@@ -35,8 +35,8 @@ function setStatus(title, message, tone = "neutral") {
 function showCanvas() { emptyState.hidden = true; canvasWrap.hidden = false; }
 function hideCanvas() { canvasWrap.hidden = true; emptyState.hidden = false; }
 function updateBlurLabel() {
-  blurValue.value = \`\${blurStrength.value} px\`;
-  blurValue.textContent = \`\${blurStrength.value} px\`;
+  blurValue.value = `${blurStrength.value} px`;
+  blurValue.textContent = `${blurStrength.value} px`;
 }
 function dimensionsFor(source, maxEdge = 1280) {
   const width = source.videoWidth || source.naturalWidth || source.width;
@@ -55,8 +55,8 @@ function captureSource(source, maxEdge = 1280) {
   return size;
 }
 function setOutputMetadata(width, height, elapsedMs) {
-  resolutionLabel.textContent = \`\${width} × \${height} · local\`;
-  elapsedLabel.textContent = elapsedMs == null ? "Live preview" : \`\${(elapsedMs / 1000).toFixed(2)} s inference\`;
+  resolutionLabel.textContent = `${width} × ${height} · local`;
+  elapsedLabel.textContent = elapsedMs == null ? "Live preview" : `${(elapsedMs / 1000).toFixed(2)} s inference`;
 }
 function stopCamera() {
   cameraActive = false;
