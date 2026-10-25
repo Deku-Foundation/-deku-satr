@@ -1102,14 +1102,14 @@ private fun PersonModelCard(profile: PersonModelProfile, onChange: (PersonModelP
             Text("اختر النموذج قبل بدء الجلسة. يتطلب تغيير النموذج إيقاف الجلسة ثم بدءها من جديد.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             listOf(
                 PersonModelProfile.FAST_SEMANTIC to "خفيف — LR-ASPP",
-                PersonModelProfile.RTMDET_INS_S to "تقسيم منفصل للأشخاص — RTMDet-Ins-S",
+                PersonModelProfile.RTMDET_INS_S to "تقسيم منفصل للأشخاص — RTMDet-Ins-tiny",
             ).forEach { (option, label) ->
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text(label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
                         Text(
                             if (option == PersonModelProfile.FAST_SEMANTIC) "نموذج صغير يقارب 3.52 MB؛ يطمس الأشخاص كقناع واحد."
-                            else "نحو 43.2 MB؛ ينتج أقنعة منفصلة ويستهلك ذاكرة ومعالجة أكثر.",
+                            else "نحو 24 MB؛ ينتج أقنعة منفصلة ويستهلك معالجة أكثر من النموذج الخفيف.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -1323,7 +1323,7 @@ private fun ModelCard(snapshot: SatrSessionSnapshot, profile: PersonModelProfile
                 Spacer(Modifier.width(11.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text("نموذج الأشخاص", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(if (profile == PersonModelProfile.FAST_SEMANTIC) "LiteRT · LR-ASPP + MobileNetV3-Large" else "ONNX Runtime · RTMDet-Ins-S", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (profile == PersonModelProfile.FAST_SEMANTIC) "LiteRT · LR-ASPP + MobileNetV3-Large" else "ONNX Runtime · RTMDet-Ins-tiny", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 StatusPill(
                     label = if (snapshot.modelReady) "جاهز" else "مضمّن",
@@ -1336,7 +1336,7 @@ private fun ModelCard(snapshot: SatrSessionSnapshot, profile: PersonModelProfile
                 StatusPill("نسخة تجريبية", MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(
-                if (profile == PersonModelProfile.FAST_SEMANTIC) "النموذج الخفيف بحجم يقارب 3.52 MB؛ يطمس الأشخاص كقناع واحد. يُنزّل أثناء البناء ويتحقق من SHA-256، ولا يحتاج اتصالاً بالإنترنت وقت التشغيل." else "نموذج تقسيم الأشخاص إلى أقنعة منفصلة؛ حجمه نحو 43.2 MB ويحتاج ذاكرة ومعالجة أكبر. يُضمّن أثناء البناء بعد التحقق من SHA-256، ولا يحتاج اتصالاً بالإنترنت وقت التشغيل.",
+                if (profile == PersonModelProfile.FAST_SEMANTIC) "النموذج الخفيف بحجم يقارب 3.52 MB؛ يطمس الأشخاص كقناع واحد. يُنزّل أثناء البناء ويتحقق من SHA-256، ولا يحتاج اتصالاً بالإنترنت وقت التشغيل." else "نموذج تقسيم الأشخاص إلى أقنعة منفصلة؛ حجمه نحو 24 MB ويحتاج معالجة أكثر من النموذج الخفيف. يُضمّن أثناء البناء بعد التحقق من SHA-256، ولا يحتاج اتصالاً بالإنترنت وقت التشغيل.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 lineHeight = 20.sp,
