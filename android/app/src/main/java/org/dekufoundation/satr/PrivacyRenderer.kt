@@ -1,8 +1,6 @@
 package org.dekufoundation.satr
 
 import android.graphics.Bitmap
-import kotlin.math.max
-import kotlin.math.min
 
 data class RenderedPrivacyMask(
     val overlay: Bitmap,
@@ -52,7 +50,7 @@ object PrivacyRenderer {
         val sourcePixels = IntArray(width * height)
         source.getPixels(sourcePixels, 0, width, 0, 0, width, height)
         val boundedBlur = blurRadius.coerceIn(FilterSettings.MIN_BLUR_RADIUS, FilterSettings.MAX_BLUR_RADIUS)
-        val blurredPixels = boxBlur(sourcePixels, width, height, max(boundedBlur, min(width, height) / 36))
+        val blurredPixels = boxBlur(sourcePixels, width, height, boundedBlur)
         val outputPixels = IntArray(width * height)
 
         for (y in 0 until height) {
