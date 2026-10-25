@@ -80,7 +80,7 @@ class OverlayController(
                 return@post
             }
             currentView.showMask(bitmap)
-            setFilterWindowAlpha(NORMAL_FILTER_ALPHA)
+            setFilterWindowAlpha(if (FilterSettings.effect == PrivacyEffect.COVER) FAIL_CLOSED_ALPHA else NORMAL_FILTER_ALPHA)
         }
     }
 
