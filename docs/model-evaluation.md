@@ -217,3 +217,34 @@ Gender classification is not added. The current semantic mask cannot separate in
 The LR-ASPP preprocessor keeps one fixed-size input bitmap and canvas, draws each source frame/tile directly into the destination rectangle, and reuses the existing direct input/output buffers and pixel array. This removes the per-inference temporary scaled bitmap and input bitmap allocations while preserving the same letterbox dimensions, ImageNet normalization, channel order, and output-mask mapping. The scratch bitmap and pixel array are cleared/released when the segmenter closes.
 
 This is a code-level allocation reduction. No latency or memory percentage is claimed until measured on physical devices.
+
+
+## Per-person model shortlist (2026-10-25, source review)
+
+The product requirement is not solved by a generic person mask. The current LR-ASPP-MobileNetV3 model emits one semantic person confidence map; it cannot label each individual separately. The next model must produce **one mask per instance**, then a user-selected target policy can decide which of those masks to composite.
+
+| Candidate | Model footprint | Public benchmark / behavior | License and decision |
+|---|---:|---|---|
+| RTMDet-Ins-S, ONNX | ~41 MB | COCO val2017 instance segmentation: mask mAP 38.7; output contains person boxes and individual masks; conversion guide recommends score threshold 0.30 and mask-overlap NMS 0.85 | Apache-2.0. **Preferred candidate within the ~50 MB weight budget.** Its Android latency is not yet measured; run it through ONNX Runtime Android and profile memory/thermal behavior before making it the shipping default. |
+| RTMDet-Ins-Tiny, ONNX | ~23 MB | COCO mask mAP 35.4; fastest variant in that model set, but lower confidence on crowded scenes | Apache-2.0. Fallback candidate for low-memory devices after measuring accuracy and sustained speed. |
+| YOLO26n-seg, TFLite INT8 | ~3.18 MB | EdgeFirst reports COCO mask mAP 33.19 for its Nano reference | We will not bundle in this MIT repository as-is: weights are AGPL-3.0 and the model card/validation assets include CC BY-NC 4.0 terms. |
+| YOLACT-ResNet50, LiteRT | ~125 MB | Per-instance masks; reference graph latency around 41 ms on Pixel 8a GPU | MIT weights, but exceeds the size budget by a large margin. |
+| MobileSAM | ~40.7 MB | Promptable point/box mask; it does not automatically discover every person, and CPU timings are not competitive for every-frame screening | Apache-2.0. Useful for user-guided still-image selection, not the default live video segmenter. |
+| EfficientDet-Lite0 INT8 | ~4.4 MB | COCO object detector, ~29.31 ms CPU reference on Pixel 6 | Small auxiliary detector, but gives boxes rather than per-person masks; alone it is not sufficient for precise body-shaped blur. |
+
+Sources: 
+- RTMDet-Ins-ONNX model cards, dimensions, license and output contract: https://huggingface.co/tori29umai/rtmdet-ins-onnx-person-masks
+- RTMDet tiny/s/supplementary COCO results: https://huggingface.co/spaces/facebook/sapiens-pose/blob/main/external/det/configs/rtmdet/README.md
+- YOLO26-seg model card and licensing: https://huggingface.co/EdgeFirst/yolo26-seg
+- YOLACT LiteRT card: https://huggingface.co/litert-community/YOLACT-ResNet50-LiteRT
+- MobileSAM license and task behavior: https://www.libreyolo.com/docs/models/mobilesam
+- EfficientDet-Lite0 size/latency reference: https://developers.google.com/edge/litert/libraries/modify/object_detection
+- ONNX Runtime Android release stream: https://github.com/microsoft/onnxruntime/releases
+
+These published metrics are not evidence of 99% recall on phone screenshots. COCO segmentation average precision is a general-object benchmark; our own test set must include multiple people, small faces/bodies, partial occlusion, hair styles and lengths that differ from gender presentation, video motion, unusual illustration styles, compression, and screen rotation.
+
+## Targeting and classifier boundary
+
+Automatic gender inference from faces or appearance is not part of the person-mask model. Gender cannot be reliably inferred from hair length, clothing, facial hair, or body shape; facial-attribute research also reports subgroup disparities across datasets and architectures. The target policy is user-controlled: explicitly select the detected person(s) to blur, blur all except selected person(s), or conservatively blur all detected people. This avoids treating a model guess as a reliable identity label. If the user wants an entirely automatic gender mode, it would require separate product, ethical, bias and benchmark review rather than being silently folded into a person segmenter.
+
+The repository now contains a pure, unit-tested composition policy for per-instance masks. It is infrastructure only; the UI does not yet expose selective person targeting until an instance-mask backend is integrated and its performance and asset integrity are verified.
