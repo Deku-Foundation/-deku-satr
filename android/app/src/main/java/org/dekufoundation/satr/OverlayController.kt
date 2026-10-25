@@ -54,7 +54,7 @@ class OverlayController(
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             alpha = NORMAL_FILTER_ALPHA
-            title = "Deku Satr privacy mask"
+            title = "Satr Blur privacy mask"
         }
 
         return try {
@@ -174,7 +174,7 @@ class OverlayController(
                 setStroke(dp(1), Color.rgb(31, 122, 88))
             }
             elevation = dp(9).toFloat()
-            contentDescription = "عناصر تحكم جلسة دِكو سَتر"
+            contentDescription = "عناصر تحكم جلسة ستر بلور"
         }
 
         val title = TextView(appContext).apply {
@@ -225,7 +225,7 @@ class OverlayController(
             gravity = Gravity.TOP or Gravity.END
             x = dp(10)
             y = dp(106)
-            this.title = "Deku Satr controls"
+            this.title = "Satr Blur controls"
         }
 
         windowManager.addView(panel, params)
