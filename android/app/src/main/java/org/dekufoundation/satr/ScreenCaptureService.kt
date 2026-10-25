@@ -116,6 +116,10 @@ class ScreenCaptureService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        if (intent?.action == ACTION_UPDATE_TARGETS) {
+            applyTargetUpdate(intent)
+            return START_NOT_STICKY
+        }
         if (projection != null) return START_NOT_STICKY
 
         val command = intent
@@ -162,6 +166,54 @@ class ScreenCaptureService : Service() {
             publishStartError("تعذر بدء المعالجة. لم تُطبّق الفلترة.")
             stopSelf()
             START_NOT_STICKY
+        }
+    }
+
+    private fun applyTargetUpdate(command: Intent?) {
+        if (projection == null || stopping || activePersonModelProfile != PersonModelProfile.RTMDET_INS_S) {
+            SessionStatus.update { current ->
+                current.copy(
+                    detail = "لتحديد أشخاص منفردين، اختر نموذج التقسيم الفردي ثم ابدأ جلسة جديدة.",
+                    personTargetMode = PersonTargetMode.MASK_ALL,
+                    selectedTrackIds = emptySet(),
+                )
+            }
+            return
+        }
+        val requestedMode = runCatching {
+            PersonTargetMode.valueOf(command?.getStringExtra(EXTRA_TARGET_MODE) ?: PersonTargetMode.MASK_ALL.name)
+        }.getOrDefault(PersonTargetMode.MASK_ALL)
+        val requestedIds = command?.getStringExtra(EXTRA_SELECTED_TRACK_IDS)
+            .orEmpty()
+            .split(',')
+            .mapNotNull { it.toLongOrNull()?.takeIf { id -> id >= 0L } }
+            .toSet()
+        val safeMode = if (requestedMode == PersonTargetMode.MASK_SELECTED_ONLY && requestedIds.isEmpty()) {
+            PersonTargetMode.MASK_ALL
+        } else {
+            requestedMode
+        }
+        FilterSettings.selectedPersonTrackIds = requestedIds
+        FilterSettings.personTargetMode = safeMode
+        synchronized(this) {
+            lastGoodConfidence = null
+            lastGoodMaskWidth = 0
+            lastGoodMaskHeight = 0
+            lastGoodMaskAtMs = 0L
+            personFramesInARow = 0
+            emptyFramesInARow = 0
+            temporalMaskSmoother.reset()
+        }
+        SessionStatus.update { current ->
+            current.copy(
+                detail = if (safeMode == PersonTargetMode.MASK_SELECTED_ONLY && requestedIds.isEmpty()) {
+                    "لم تحدد أي شخص؛ عادت الحماية إلى طمس الجميع."
+                } else {
+                    "تم تحديث اختيار الأشخاص يدوياً. هذا لا يعيد تدريب أوزان النموذج."
+                },
+                personTargetMode = safeMode,
+                selectedTrackIds = requestedIds,
+            )
         }
     }
 
@@ -778,6 +830,9 @@ class ScreenCaptureService : Service() {
     companion object {
         const val ACTION_START = "org.dekufoundation.satr.action.START_CAPTURE"
         const val ACTION_STOP = "org.dekufoundation.satr.action.STOP_CAPTURE"
+        const val ACTION_UPDATE_TARGETS = "org.dekufoundation.satr.action.UPDATE_TARGETS"
+        const val EXTRA_TARGET_MODE = "target_mode"
+        const val EXTRA_SELECTED_TRACK_IDS = "selected_track_ids"
         const val EXTRA_RESULT_CODE = "projection_result_code"
         const val EXTRA_RESULT_DATA = "projection_result_data"
         const val EXTRA_CAPTURE_WIDTH = "capture_width"
