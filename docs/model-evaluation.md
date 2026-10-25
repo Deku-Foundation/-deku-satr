@@ -176,3 +176,26 @@ Sources:
 - https://github.com/ultralytics/ultralytics/blob/main/docs/en/models/yolo11.md
 - https://huggingface.co/EdgeFirst/yolo11-seg/tree/main/tflite
 - https://huggingface.co/STMicroelectronics/yolov11n_seg
+
+
+## Frame stability and next model candidate (2026-10-25)
+
+The live path now applies a small, per-pixel confidence blend to adjacent masks only when geometry is unchanged and the gap is at most 450 ms. The current inference has 72% weight; the previous map contributes 28%. This is boundary stabilization, not a tracker: a fully empty fresh pixel becomes 0.28 after one blend and stays below the default 0.42 mask threshold, so a departed person is not kept as an opaque silhouette. The blend mutates the fresh confidence buffer in place and retains one prior map to limit allocation churn. Geometry changes and new sessions reset the state. Unit tests cover the blend, disappearance, elapsed-time limit, dimensions, and reset behavior.
+
+The screen-resize path also respects the selected capture profile instead of silently returning to the default 640 px after rotation. This closes a configuration mismatch; it does not imply fixed frame rate or eliminate all capture-overlay feedback.
+
+### Instance model candidate
+
+RTMDet-Ins-tiny is a promising next candidate for per-person masks: upstream reports 35.4 mask AP on COCO at 640px, 5.6M parameters and 11.8 GFLOPs. These benchmarks are measured with TensorRT FP16 on an NVIDIA RTX 3090, not an Android phone. LibreYOLO documents Apache-2.0 source and weight redistribution for its specific checkpoints, but the RTMDet-Ins-tiny checkpoint still needs conversion, output-contract validation, and Android benchmarking before replacing the current TFLite model.
+
+Sources:
+- https://github.com/open-mmlab/mmdetection/blob/main/configs/rtmdet/README.md
+- https://www.libreyolo.com/docs/models/rtmdet
+
+### Selective gender/presentation targeting
+
+An instance-mask model alone cannot decide which people the user wants blurred. Each instance needs an associated, independently evaluated face or appearance classifier, and uncertain cases must use a conservative fallback. FastFace publishes MobileNetV3 ONNX variants with Apache-2.0 metadata; the maintainer-reported results differ across datasets and crop/model sizes, so those are a candidate for a controlled comparison, not a validated Satr result. A face model also misses people when faces are too small, turned away, covered, or absent.
+
+Source: https://huggingface.co/iFurySt/fastface
+
+No gender-selective mode is exposed as functional yet. The current mask is semantic and unions all persons, so it cannot correctly apply one blur policy per individual. Before enabling “blur men / blur women” modes, the instance model and classifier must be combined and tested on labeled phone-screen frames—including long-haired men, short-haired women, multiple/distant people, faces hidden, motion blur, and different brightness/orientation. The default must stay “blur all detected people” whenever a per-instance classification is low confidence or missing. Do not market 99% accuracy without independent, held-out measurements.
