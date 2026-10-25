@@ -749,7 +749,7 @@ class ScreenCaptureService : Service() {
         private const val STALE_FRAME_LIMIT_MS = 3_500L
         private const val WATCHDOG_INTERVAL_MS = 500L
         private const val MAX_MASK_PIXELS = 2_000_000
-        private const val MAX_FRAME_PIXELS = 500_000
+        private const val MAX_FRAME_PIXELS = 600_000
         private const val MIN_PERSON_COVERAGE_PERCENT = 1
         private const val PERSON_FRAMES_TO_CONFIRM = 2
         private const val EMPTY_FRAMES_TO_CLEAR_MASK = 3
