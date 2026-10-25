@@ -88,7 +88,7 @@ class OverlayController(
         mainHandler.post {
             setFilterWindowAlpha(FAIL_CLOSED_ALPHA)
             filterView?.showFailClosed()
-            controlTitle?.text = "دِكو سَتر · إخفاء احتياطي"
+            controlTitle?.text = "ستر بلور · إخفاء احتياطي"
             controlDetail?.text = detail.take(120)
             controlDetail?.setTextColor(Color.rgb(255, 215, 140))
         }
@@ -103,12 +103,12 @@ class OverlayController(
 
             if (phaseChanged || lastPanelPhase == null) {
                 controlTitle?.text = when (snapshot.phase) {
-                    SatrPhase.STARTING -> "دِكو سَتر · جارٍ التحضير"
-                    SatrPhase.FILTERING -> "دِكو سَتر · تمويه تجريبي"
-                    SatrPhase.NO_PERSON_DETECTED -> "دِكو سَتر · لا توجد منطقة واضحة"
-                    SatrPhase.FAIL_CLOSED -> "دِكو سَتر · إخفاء احتياطي"
-                    SatrPhase.ERROR -> "دِكو سَتر · حدث خطأ"
-                    else -> "دِكو سَتر · جلسة الالتقاط"
+                    SatrPhase.STARTING -> "ستر بلور · جارٍ التحضير"
+                    SatrPhase.FILTERING -> "ستر بلور · تمويه تجريبي"
+                    SatrPhase.NO_PERSON_DETECTED -> "ستر بلور · لا توجد منطقة واضحة"
+                    SatrPhase.FAIL_CLOSED -> "ستر بلور · إخفاء احتياطي"
+                    SatrPhase.ERROR -> "ستر بلور · حدث خطأ"
+                    else -> "ستر بلور · جلسة الالتقاط"
                 }
             }
 
@@ -121,7 +121,7 @@ class OverlayController(
                     if (snapshot.phase == SatrPhase.FAIL_CLOSED || snapshot.phase == SatrPhase.ERROR) {
                         Color.rgb(255, 215, 140)
                     } else {
-                        Color.rgb(197, 220, 225)
+                        Color.rgb(230, 239, 233)
                     },
                 )
                 lastPanelUpdateMs = now
@@ -169,16 +169,16 @@ class OverlayController(
             layoutDirection = View.LAYOUT_DIRECTION_RTL
             setPadding(dp(14), dp(10), dp(14), dp(9))
             background = GradientDrawable().apply {
-                setColor(Color.rgb(16, 31, 47))
+                setColor(Color.rgb(18, 55, 42))
                 cornerRadius = dp(18).toFloat()
-                setStroke(dp(1), Color.rgb(67, 121, 124))
+                setStroke(dp(1), Color.rgb(31, 122, 88))
             }
             elevation = dp(9).toFloat()
             contentDescription = "عناصر تحكم جلسة دِكو سَتر"
         }
 
         val title = TextView(appContext).apply {
-            text = "دِكو سَتر · جارٍ التحضير"
+            text = "ستر بلور · جارٍ التحضير"
             textSize = 13f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
@@ -189,7 +189,7 @@ class OverlayController(
         val detail = TextView(appContext).apply {
             text = "لا تغلق هذا المؤشر أثناء الالتقاط"
             textSize = 10.5f
-            setTextColor(Color.rgb(197, 220, 225))
+            setTextColor(Color.rgb(230, 239, 233))
             setPadding(dp(2), dp(1), dp(2), dp(5))
         }
         val stop = TextView(appContext).apply {
@@ -338,7 +338,7 @@ class OverlayController(
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
             if (failClosed) {
-                canvas.drawColor(Color.rgb(13, 24, 38))
+                canvas.drawColor(Color.rgb(18, 55, 42))
                 return
             }
             val bitmap = maskBitmap ?: return
