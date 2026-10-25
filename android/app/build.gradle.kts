@@ -1,3 +1,4 @@
+import java.io.File
 import java.net.URL
 import java.security.MessageDigest
 import org.gradle.api.GradleException
@@ -77,7 +78,7 @@ val downloadLrasppModel by tasks.registering {
             return@doLast
         }
         output.parentFile.mkdirs()
-        val temporary = java.io.File(output.parentFile, output.name + ".download")
+        val temporary = File(output.parentFile, output.name + ".download")
         try {
             URL("https://huggingface.co/litert-community/lraspp_mobilenet_v3_large/resolve/ac7d12fd05b7542cd884c85968b3193c8f8e4fa7/lraspp_mobilenet_v3_large_dynamic_wi8_afp32.tflite")
                 .openConnection()
