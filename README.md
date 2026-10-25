@@ -4,7 +4,7 @@
 
 Deku Satr is being developed as a native Android utility that attempts to mask people visible on the screen across apps. The repository also retains a browser prototype for research. Android work is the active product path.
 
-> **Prototype warning:** the Android filter now runs an embedded person-segmentation model and draws a blurred mask, but the segmentation model is optimized for selfie/person imagery, not validated for all screen content. It can miss small or distant people. Secure windows and DRM content may be un-capturable. Do not treat this release as guaranteed protection.
+> **Prototype warning:** the Android filter now runs an embedded person-segmentation model and draws a blurred mask, the LR-ASPP semantic person segmenter is integrated as an experimental candidate, but has not been validated for all screen content. It can miss small or distant people. Secure windows and DRM content may be un-capturable. Do not treat this release as guaranteed protection.
 
 ## Native Android — current milestone
 
@@ -13,14 +13,14 @@ Path: android/
 - Kotlin app with Arabic-first Material 3 UI, separate Home/Settings destinations, adaptive 680 dp maximum width, system light/dark themes, and a 48 dp floating Stop control.
 - Explicit overlay permission and Android MediaProjection consent for every capture session; Android 14+ requests the full default display rather than a single app window.
 - A visible media-projection foreground service, notification stop action, draggable floating stop panel, and a full-screen transparent mask layer that does not accept touches.
-- Bundled model: ML Kit Selfie Segmentation 16.0.0-beta6. The model assets are statically linked at build time; the app does not download model weights on first launch.
+- Bundled model: LiteRT/TFLite LR-ASPP + MobileNetV3-Large, dynamic weight-only INT8 with FP32 activations (about 3.52 MB). Gradle downloads the pinned artifact at build time and verifies SHA-256 before packaging it; the app does not download weights at runtime.
 - Local in-memory processing: screen frames are downscaled to a 640 px longest edge, decoded from RGBA with explicit channel handling, inference is admitted at a 140 ms minimum interval, new frames are dropped while the model is busy, and only masked areas are rendered. A brief 650 ms last-good-mask hold reduces flicker from transient empty masks. The selected effect can be blur, pixelation, or solid cover.
 - Android 12+ pass-through touch requires a maximum 0.8 opacity for the normal overlay. This is a documented residual-image tradeoff; fail-closed mode is fully opaque and may block underlying touches until Stop is tapped.
 - No camera or microphone permission, no screenshot file storage, and the manifest merger is instructed to remove the INTERNET permission.
 - Unit tests for capture-size policy, mask confidence bounds, and persisted filter-setting ranges.
 - GitHub Actions builds/tests the Android app, audits the merged manifest for the INTERNET permission, and uploads a debug APK artifact.
 
-The current model adds approximately 4.5 MB according to Google's ML Kit guide. It is a beta API using a selfie-oriented model; sensitivity and mask expansion are configurable, but full-screen multi-person performance still requires real-device evaluation. See Android architecture (docs/android-architecture.md), privacy notes (docs/android-privacy.md), and model evaluation (docs/model-evaluation.md).
+The replacement is a general semantic person-mask candidate rather than a selfie-only API, and uses the LiteRT/TFLite Interpreter with a three-thread CPU/NNAPI path. It has not yet passed a labelled screen-frame benchmark or physical-device thermal/latency tests. The upstream converted artifact has no explicit license field in its model card, so licensing review remains a release gate. See Android architecture (docs/android-architecture.md), privacy notes (docs/android-privacy.md), and model evaluation (docs/model-evaluation.md).
 
 ## Download a development APK
 
@@ -68,12 +68,12 @@ The PWA uses Xenova/segformer-b0-finetuned-ade-512-512 through Transformers.js a
 
 ## License
 
-Repository code is MIT-licensed. ML Kit, AndroidX, and other third-party libraries have their own license terms.
+Repository code is MIT-licensed. LiteRT/TFLite and AndroidX have their own license terms. The LR-ASPP converted model's distribution license still needs explicit verification before a release APK is published.
 
 
 ## Version 0.4.2
 
-The Satr Blur identity now follows the supplied mihrab-and-fading-layers mark and its deep-green, botanical-green, warm-gold and off-white palette. Settings include working blur, pixelation and opaque-cover choices. Live rendering now defers old bitmap recycling, holds a recent mask briefly through intermittent model dropouts, and targets up to roughly 7 frame admissions per second on devices that can sustain it. The model itself remains ML Kit Selfie Segmentation; this release does not claim 99% accuracy or a validated replacement-model win. Solid cover can block interaction with the app underneath, while the floating Stop control remains available.
+The Satr Blur identity now follows the supplied mihrab-and-fading-layers mark and its deep-green, botanical-green, warm-gold and off-white palette. Settings include working blur, pixelation and opaque-cover choices. Live rendering now defers old bitmap recycling, holds a recent mask briefly through intermittent model dropouts, and targets up to roughly 7 frame admissions per second on devices that can sustain it. The live and still-image paths now use LR-ASPP + MobileNetV3-Large through LiteRT/TFLite. This is a model migration for evaluation, not evidence of 99% accuracy or a validated replacement-model win. Solid cover can block interaction with the app underneath, while the floating Stop control remains available.
 
 ## Version 0.4.1
 The Arabic-first Home destination contains session status and Start/Stop. Filter strength, confidence threshold and mask expansion are on the separate Settings destination and persist locally. The brand uses the supplied Satr Blur palette and mihrab mark, with Deku Foundation credited separately. Denying POST_NOTIFICATIONS no longer blocks the capture flow; Android may restrict the notification's drawer visibility while the system foreground-service rules and the app/overlay Stop controls remain in force. Metrics are throttled to avoid recomposing the whole dashboard at inference frequency. The live mask is held through two transient empty frames to reduce visible blinking on video; empty masks also skip the CPU blur pass.

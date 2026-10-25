@@ -36,9 +36,11 @@ class FilterSettingsTest {
     fun processingProfileCanBeChangedAndReset() {
         FilterSettings.processingProfile = ProcessingProfile.DETAIL
         assertEquals(720, FilterSettings.processingProfile.maxEdge)
-        assertEquals(100L, FilterSettings.processingProfile.frameIntervalMs)
+        assertEquals(140L, FilterSettings.processingProfile.frameIntervalMs)
+        assertEquals(true, FilterSettings.processingProfile.tileWideFrames)
         FilterSettings.processingProfile = ProcessingProfile.POWER_SAVER
         assertEquals(480, FilterSettings.processingProfile.maxEdge)
+        assertEquals(false, FilterSettings.processingProfile.tileWideFrames)
         FilterSettings.resetToDefaults()
         assertEquals(ProcessingProfile.BALANCED, FilterSettings.processingProfile)
     }

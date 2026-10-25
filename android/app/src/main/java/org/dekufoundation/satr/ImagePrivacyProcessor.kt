@@ -5,13 +5,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.net.Uri
-import com.google.android.gms.tasks.Tasks
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.segmentation.Segmentation
-import com.google.mlkit.vision.segmentation.SegmentationMask
-import com.google.mlkit.vision.segmentation.selfie.SelfieSegmenterOptions
-import java.nio.ByteOrder
-import java.util.concurrent.TimeUnit
 
 data class ProcessedImage(val bitmap: Bitmap, val coveragePercent: Int)
 
@@ -29,23 +22,13 @@ object ImagePrivacyProcessor {
         maskExpansionRadius: Int,
     ): ProcessedImage {
         val source = decodeBounded(context, uri)
-        val segmenter = Segmentation.getClient(
-            SelfieSegmenterOptions.Builder()
-                .setDetectorMode(SelfieSegmenterOptions.SINGLE_IMAGE_MODE)
-                .enableRawSizeMask()
-                .build(),
-        )
+        val segmenter = LrasppPersonSegmenter(context)
         var overlay: Bitmap? = null
         try {
-            val mask = Tasks.await(
-                segmenter.process(InputImage.fromBitmap(source, 0)),
-                30,
-                TimeUnit.SECONDS,
-            )
-            val confidence = copyConfidence(mask)
+            val mask = segmenter.process(source)
             val rendered = PrivacyRenderer.render(
                 source = source,
-                confidence = confidence,
+                confidence = mask.confidence,
                 maskWidth = mask.width,
                 maskHeight = mask.height,
                 threshold = threshold,
@@ -87,16 +70,5 @@ object ImagePrivacyProcessor {
             requireNotNull(stream) { "Could not reopen image." }
             requireNotNull(BitmapFactory.decodeStream(stream, null, options)) { "Image decode failed." }
         }
-    }
-
-    private fun copyConfidence(mask: SegmentationMask): FloatArray {
-        val count = mask.width.toLong() * mask.height.toLong()
-        require(mask.width > 0 && mask.height > 0 && count in 1..PersonMaskMath.MAX_MASK_PIXELS.toLong()) {
-            "Invalid model mask dimensions."
-        }
-        val buffer = mask.buffer.duplicate().order(ByteOrder.nativeOrder())
-        buffer.rewind()
-        require(buffer.remaining().toLong() >= count * Float.SIZE_BYTES) { "Incomplete confidence mask." }
-        return FloatArray(count.toInt()) { buffer.float.coerceIn(0f, 1f) }
     }
 }

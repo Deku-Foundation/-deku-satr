@@ -526,7 +526,7 @@ private fun SatrDashboard(
        ModelCard(snapshot);SafetyCard();HowItWorksCard()
       }
      }
-     Text("ستر بلور · SATR BLUR · من Deku Foundation · إصدار تجريبي 0.5.0",modifier=Modifier.fillMaxWidth().padding(top=4.dp),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,textAlign=TextAlign.Center)
+     Text("ستر بلور · SATR BLUR · من Deku Foundation · إصدار تجريبي 0.5.1",modifier=Modifier.fillMaxWidth().padding(top=4.dp),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,textAlign=TextAlign.Center)
     }
    }
   }
@@ -613,7 +613,7 @@ private fun ProcessingProfileCard(profile:ProcessingProfile,onChange:(Processing
     Row(verticalAlignment=Alignment.CenterVertically,modifier=Modifier.fillMaxWidth()){
      Column(Modifier.weight(1f)){
       Text(label,style=MaterialTheme.typography.bodyLarge,fontWeight=FontWeight.SemiBold)
-      Text(when(option){ProcessingProfile.POWER_SAVER->"480px · حمل أقل";ProcessingProfile.BALANCED->"640px · الإعداد الافتراضي";ProcessingProfile.DETAIL->"720px · حمل أعلى"},style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+      Text(when(option){ProcessingProfile.POWER_SAVER->"480px · حمل أقل، دون تقسيم الإطار";ProcessingProfile.BALANCED->"640px · تقسيم الإطارات الطويلة مع تداخل";ProcessingProfile.DETAIL->"720px · تغطية أدق محتملة، وحمل أعلى"},style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
      }
      if(option==profile) StatusPill("محدد",MaterialTheme.colorScheme.primaryContainer,MaterialTheme.colorScheme.onPrimaryContainer)
      else OutlinedButton(onClick={onChange(option)},modifier=Modifier.heightIn(min=48.dp)){Text("اختيار")}
@@ -1157,7 +1157,7 @@ private fun ModelCard(snapshot: SatrSessionSnapshot) {
                 Spacer(Modifier.width(11.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text("نموذج الأشخاص", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("ML Kit · وضع البث المرئي", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("LiteRT · LR-ASPP + MobileNetV3-Large", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 StatusPill(
                     label = if (snapshot.modelReady) "جاهز" else "مضمّن",
@@ -1170,7 +1170,7 @@ private fun ModelCard(snapshot: SatrSessionSnapshot) {
                 StatusPill("نسخة تجريبية", MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(
-                "حزمة النموذج تزيد حجم التطبيق بنحو 4.5 MB وفق وثائق Google. لا يلزم تنزيل أوزان النموذج عند التشغيل، ولا تُطلب صلاحية الإنترنت من التطبيق.",
+                "نموذج LR-ASPP المكمّم بحجم يقارب 3.52 MB يُضمّن في APK أثناء البناء بعد التحقق من SHA-256. يحتاج البناء إلى تنزيله مرة واحدة؛ لا يحتاج التطبيق إلى الإنترنت وقت التشغيل.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 lineHeight = 20.sp,
@@ -1201,7 +1201,7 @@ private fun SafetyCard() {
                 Text("حدود النموذج", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFF613E00))
             }
             Text(
-                "هذا نموذج تقسيم أشخاص موجّه أساساً للصور الشخصية والفيديو. قد يفوت الأشخاص الصغار أو البعيدين أو المحجوبين، وقد لا يمكن التقاط بعض النوافذ الآمنة أو فيديو DRM. لا تعتبره ضماناً كاملاً للستر.",
+                "LR-ASPP نموذج تقسيم دلالي لفئة الشخص، وليس تتبّعاً منفصلاً لكل فرد ولا مصنّفاً للجنس. في وضعي المتوازن والتفاصيل، تُحلّل الإطارات الطويلة/العريضة على قصاصات متداخلة لتحسين حجم الأشخاص داخل النموذج، لكن ذلك يزيد الحمل وقد يخفض معدل الإطارات. قد يفوّت النموذج الأشخاص الصغار أو البعيدين أو المحجوبين. لا يمكن اعتبار التغطية كاملة قبل اختبارات أجهزة حقيقية؛ وقد يمنع Android التقاط بعض النوافذ الآمنة أو فيديو DRM.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color(0xFF613E00),
                 lineHeight = 22.sp,
