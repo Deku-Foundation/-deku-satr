@@ -168,6 +168,7 @@ class MainActivity : ComponentActivity() {
                         onSaveFilterSettings = ::saveFilterSettings,
                         onStart = ::beginCaptureFlow,
                         onStop = ::requestStop,
+                        onUpdateTarget = ::updatePersonTarget,
                         processedImage = processedImage,
                         mediaBusy = mediaBusy,
                         mediaMessage = mediaMessage,
@@ -277,6 +278,17 @@ class MainActivity : ComponentActivity() {
 
     private fun saveFilterSettings() {
         FilterSettings.persist(this)
+    }
+
+    private fun updatePersonTarget(mode: PersonTargetMode, selectedIds: Set<Long>) {
+        val safeMode = if (mode == PersonTargetMode.MASK_SELECTED_ONLY && selectedIds.isEmpty()) {
+            PersonTargetMode.MASK_ALL
+        } else mode
+        startService(Intent(this, ScreenCaptureService::class.java).apply {
+            action = ScreenCaptureService.ACTION_UPDATE_TARGETS
+            putExtra(ScreenCaptureService.EXTRA_TARGET_MODE, safeMode.name)
+            putExtra(ScreenCaptureService.EXTRA_SELECTED_TRACK_IDS, selectedIds.joinToString(","))
+        })
     }
 
     private fun openNotificationSettings() {
@@ -462,7 +474,8 @@ private fun SatrTheme(content: @Composable () -> Unit) {
 private fun SatrDashboard(
  snapshot:SatrSessionSnapshot, overlayAllowed:Boolean, notificationsAllowed:Boolean,
  onGrantOverlay:()->Unit, onOpenNotificationSettings:()->Unit, onSaveFilterSettings:()->Unit,
- onStart:()->Unit, onStop:()->Unit, processedImage:Bitmap?, mediaBusy:Boolean, mediaMessage:String,
+ onStart:()->Unit, onStop:()->Unit, onUpdateTarget:(PersonTargetMode, Set<Long>)->Unit,
+ processedImage:Bitmap?, mediaBusy:Boolean, mediaMessage:String,
  mediaCoverage:Int, onPickImage:()->Unit, onSaveImage:()->Unit,
  showWelcome:Boolean, onWelcomeDone:()->Unit, onOpenSource:()->Unit,
 ) {
@@ -473,6 +486,8 @@ private fun SatrDashboard(
  var maskExpansion by rememberSaveable { mutableFloatStateOf(FilterSettings.maskExpansionRadius.toFloat()) }
  var effectName by rememberSaveable { mutableStateOf(FilterSettings.effect.name) }
  var profileName by rememberSaveable { mutableStateOf(FilterSettings.processingProfile.name) }
+ var modelProfileName by rememberSaveable { mutableStateOf(FilterSettings.personModelProfile.name) }
+ val modelProfile=runCatching { PersonModelProfile.valueOf(modelProfileName) }.getOrDefault(PersonModelProfile.FAST_SEMANTIC)
  val effect=runCatching { PrivacyEffect.valueOf(effectName) }.getOrDefault(PrivacyEffect.BLUR)
  val profile=runCatching { ProcessingProfile.valueOf(profileName) }.getOrDefault(ProcessingProfile.BALANCED)
  val scrollState=rememberScrollState()
@@ -518,6 +533,8 @@ private fun SatrDashboard(
        Text("الإعدادات",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
        Text("اختر التوازن بين سرعة المعالجة وتفاصيل القناع. حجم الالتقاط يُطبّق عند بدء جلسة جديدة.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
        ProcessingProfileCard(profile){profileName=it.name;FilterSettings.processingProfile=it;onSaveFilterSettings()}
+       PersonModelCard(modelProfile){ modelProfileName=it.name; FilterSettings.personModelProfile=it; onSaveFilterSettings() }
+       PersonTargetControls(snapshot, onUpdateTarget)
        FilterSettingsCard(effect,{effectName=it.name;FilterSettings.effect=it;onSaveFilterSettings()},blurStrength,{blurStrength=it;FilterSettings.blurStrengthPercent=it.roundToInt()},confidenceThreshold,{confidenceThreshold=it;FilterSettings.confidenceThreshold=it},maskExpansion,{maskExpansion=it;FilterSettings.maskExpansionRadius=it.roundToInt()},onSaveFilterSettings){
         FilterSettings.resetToDefaults();blurStrength=FilterSettings.blurStrengthPercent.toFloat();confidenceThreshold=FilterSettings.confidenceThreshold;maskExpansion=FilterSettings.maskExpansionRadius.toFloat();effectName=FilterSettings.effect.name;profileName=FilterSettings.processingProfile.name;onSaveFilterSettings()
        }
@@ -1036,6 +1053,96 @@ private fun FilterSettingsCard(
                     shape = RoundedCornerShape(14.dp),
                 ) { Text("حفظ الإعدادات") }
             }
+        }
+    }
+}
+
+@Composable
+private fun PersonModelCard(profile: PersonModelProfile, onChange: (PersonModelProfile) -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("نموذج الرصد", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("اختر النموذج قبل بدء الجلسة. يتطلب تغيير النموذج إيقاف الجلسة ثم بدءها من جديد.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            listOf(
+                PersonModelProfile.FAST_SEMANTIC to "خفيف — LR-ASPP",
+                PersonModelProfile.RTMDET_INS_S to "تقسيم منفصل للأشخاص — RTMDet-Ins-S",
+            ).forEach { (option, label) ->
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            if (option == PersonModelProfile.FAST_SEMANTIC) "نموذج صغير يقارب 3.52 MB؛ يطمس الأشخاص كقناع واحد."
+                            else "نحو 43.2 MB؛ ينتج أقنعة منفصلة ويستهلك ذاكرة ومعالجة أكثر.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (profile == option) StatusPill("محدد", MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
+                    else OutlinedButton(onClick = { onChange(option) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("اختيار") }
+                }
+            }
+            Text("لا يصنّف أيّ من النموذجين الجنس. لا يُستخدم طول الشعر أو اللباس للتخمين؛ استخدم الاختيار اليدوي أدناه.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 19.sp)
+        }
+    }
+}
+
+@Composable
+private fun PersonTargetControls(
+    snapshot: SatrSessionSnapshot,
+    onUpdateTarget: (PersonTargetMode, Set<Long>) -> Unit,
+) {
+    val selected = snapshot.selectedTrackIds
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("التصحيح والاختيار اليدوي", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("ابدأ جلسة باستخدام RTMDet-Ins-S لتظهر الأشخاص المكتشفون. حدّد من تريد طمسه أو استثناؤه؛ يتغير القناع في الجلسة الحالية فقط.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 21.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = { onUpdateTarget(PersonTargetMode.MASK_ALL, emptySet()) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("طمس الجميع") }
+                OutlinedButton(
+                    onClick = { if (selected.isNotEmpty()) onUpdateTarget(PersonTargetMode.MASK_SELECTED_ONLY, selected) },
+                    enabled = selected.isNotEmpty(),
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                ) { Text("طمس المحدد") }
+            }
+            OutlinedButton(
+                onClick = { onUpdateTarget(PersonTargetMode.MASK_ALL_EXCEPT_SELECTED, selected) },
+                enabled = selected.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) { Text("طمس الجميع عدا المحدد") }
+            if (snapshot.personModelProfile != PersonModelProfile.RTMDET_INS_S) {
+                Text("الاختيار الفردي غير متاح في النموذج الخفيف. اختر RTMDet-Ins-S ثم أعد تشغيل جلسة الحماية.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else if (snapshot.detectedPeople.isEmpty()) {
+                Text("لم تُرصد أشخاص في الإطار الحالي بعد. افتح محتوى تظهر فيه أشخاص وانتظر ظهور القائمة.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Text("الأشخاص المرصودون", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                snapshot.detectedPeople.forEach { person ->
+                    val isSelected = person.trackId in selected
+                    val position = "المركز " + (person.box.centerX * 100).roundToInt() + "٪ أفقياً، " + (person.box.centerY * 100).roundToInt() + "٪ عمودياً"
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("شخص #" + person.trackId, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                            Text(position + " · ثقة الرصد " + (person.confidence * 100).roundToInt() + "٪", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                val updated = if (isSelected) selected - person.trackId else selected + person.trackId
+                                val nextMode = if (snapshot.personTargetMode == PersonTargetMode.MASK_SELECTED_ONLY && updated.isEmpty()) PersonTargetMode.MASK_ALL else snapshot.personTargetMode
+                                onUpdateTarget(nextMode, updated)
+                            },
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) { Text(if (isSelected) "إلغاء التحديد" else "تحديد") }
+                    }
+                }
+            }
+            Text("التصحيح هنا لا يدرّب أوزان النموذج تلقائياً. أرقام الأشخاص مؤقتة وقد تتغير عند اختفاء الشخص أو تغيّر المشهد؛ راجع الاختيار قبل الاعتماد عليه.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 19.sp)
         }
     }
 }
