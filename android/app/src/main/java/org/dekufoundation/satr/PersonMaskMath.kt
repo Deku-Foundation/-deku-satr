@@ -3,6 +3,8 @@ package org.dekufoundation.satr
 import kotlin.math.roundToInt
 
 object PersonMaskMath {
+    const val MAX_MASK_PIXELS = 2_000_000
+
     fun thresholdAndDilate(
         confidence: FloatArray,
         width: Int,
@@ -11,12 +13,16 @@ object PersonMaskMath {
         radiusX: Int = 2,
         radiusY: Int = 2,
     ): BooleanArray {
+        val pixelCount = width.toLong() * height.toLong()
         require(width > 0 && height > 0) { "Mask dimensions must be positive." }
-        require(confidence.size == width * height) { "Mask dimensions do not match its data." }
+        require(
+            pixelCount in 1..MAX_MASK_PIXELS.toLong() &&
+                pixelCount == confidence.size.toLong(),
+        ) { "Mask dimensions do not match its data or exceed the processing limit." }
         require(threshold in 0f..1f) { "Threshold must be between zero and one." }
 
-        val radiusHorizontal = radiusX.coerceAtLeast(0)
-        val radiusVertical = radiusY.coerceAtLeast(0)
+        val radiusHorizontal = radiusX.coerceIn(0, width - 1)
+        val radiusVertical = radiusY.coerceIn(0, height - 1)
         val binary = BooleanArray(confidence.size) { confidence[it] >= threshold }
         if (radiusHorizontal == 0 && radiusVertical == 0) return binary
 

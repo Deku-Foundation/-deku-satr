@@ -273,29 +273,38 @@ class ScreenCaptureService : Service() {
                                     maskHeight = mask.height,
                                     blurRadius = FilterSettings.blurRadius,
                                 )
-                                if (stopping) {
+                                val activeOverlay = overlayController
+                                if (activeOverlay == null) {
                                     if (!rendered.overlay.isRecycled) rendered.overlay.recycle()
                                     return@execute
                                 }
 
-                                lastSuccessfulFrameMs = SystemClock.elapsedRealtime()
-                                val previous = SessionStatus.current()
-                                val detected = rendered.coveragePercent > MIN_PERSON_COVERAGE_PERCENT
-                                val next = previous.copy(
-                                    phase = if (detected) SatrPhase.FILTERING else SatrPhase.NO_PERSON_DETECTED,
-                                    detail = if (detected) {
-                                        "تمويه تجريبي مطبّق على المنطقة التي رصدها النموذج."
-                                    } else {
-                                        "لم يرصد النموذج شخصاً بوضوح؛ قد يفوّت أشخاصاً صغيرين أو بعيدين."
-                                    },
-                                    processedFrames = previous.processedFrames + 1,
-                                    lastInferenceMs = (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(0L),
-                                    maskCoveragePercent = rendered.coveragePercent,
-                                    modelReady = true,
-                                )
-                                overlayController?.updateFilterFrame(rendered.overlay)
-                                overlayController?.updateSession(next)
-                                SessionStatus.publish(next)
+                                val latencyMs = (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(0L)
+                                var published = false
+                                synchronized(this) {
+                                    if (!stopping) {
+                                        val previous = SessionStatus.current()
+                                        val detected = rendered.coveragePercent > MIN_PERSON_COVERAGE_PERCENT
+                                        val next = previous.copy(
+                                            phase = if (detected) SatrPhase.FILTERING else SatrPhase.NO_PERSON_DETECTED,
+                                            detail = if (detected) {
+                                                "تمويه تجريبي مطبّق على المنطقة التي رصدها النموذج."
+                                            } else {
+                                                "لم يرصد النموذج شخصاً بوضوح؛ قد يفوّت أشخاصاً صغيرين أو بعيدين."
+                                            },
+                                            processedFrames = previous.processedFrames + 1,
+                                            lastInferenceMs = latencyMs,
+                                            maskCoveragePercent = rendered.coveragePercent,
+                                            modelReady = true,
+                                        )
+                                        lastSuccessfulFrameMs = SystemClock.elapsedRealtime()
+                                        activeOverlay.updateFilterFrame(rendered.overlay)
+                                        activeOverlay.updateSession(next)
+                                        SessionStatus.publish(next)
+                                        published = true
+                                    }
+                                }
+                                if (!published && !rendered.overlay.isRecycled) rendered.overlay.recycle()
                             } catch (_: Exception) {
                                 if (!stopping) {
                                     failClosed("تعذر إنشاء قناع التمويه؛ غُطّيت الشاشة احتياطياً.")
@@ -321,13 +330,16 @@ class ScreenCaptureService : Service() {
     }
 
     private fun copyConfidence(mask: SegmentationMask): FloatArray {
-        val count = mask.width * mask.height
-        require(mask.width > 0 && mask.height > 0 && count <= MAX_MASK_PIXELS) {
-            "Invalid model mask dimensions."
-        }
+        val pixelCount = mask.width.toLong() * mask.height.toLong()
+        require(
+            mask.width > 0 &&
+                mask.height > 0 &&
+                pixelCount in 1..MAX_MASK_PIXELS.toLong(),
+        ) { "Invalid model mask dimensions." }
+        val count = pixelCount.toInt()
         val buffer = mask.buffer.duplicate().order(ByteOrder.nativeOrder())
         buffer.rewind()
-        require(buffer.remaining() >= count * Float.SIZE_BYTES) {
+        require(buffer.remaining().toLong() >= count.toLong() * Float.SIZE_BYTES) {
             "The model returned an incomplete mask."
         }
         return FloatArray(count) { buffer.float.coerceIn(0f, 1f) }
@@ -486,7 +498,7 @@ class ScreenCaptureService : Service() {
     }
 
     private fun cleanup() {
-        stopping = true
+        synchronized(this) { stopping = true }
         captureHandler?.removeCallbacks(staleFrameWatchdog)
         imageReader?.setOnImageAvailableListener(null, null)
         overlayController?.remove()

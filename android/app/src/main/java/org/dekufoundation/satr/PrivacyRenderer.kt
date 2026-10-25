@@ -22,12 +22,22 @@ object PrivacyRenderer {
         threshold: Float = 0.48f,
         blurRadius: Int = FilterSettings.blurRadius,
     ): RenderedPrivacyMask {
-        require(maskWidth > 0 && maskHeight > 0)
-        require(confidence.size == maskWidth * maskHeight)
+        val maskPixelCount = maskWidth.toLong() * maskHeight.toLong()
+        require(
+            maskWidth > 0 &&
+                maskHeight > 0 &&
+                maskPixelCount in 1..PersonMaskMath.MAX_MASK_PIXELS.toLong() &&
+                maskPixelCount == confidence.size.toLong(),
+        ) { "Invalid confidence mask dimensions." }
 
         val width = source.width
         val height = source.height
-        require(width > 0 && height > 0)
+        val sourcePixelCount = width.toLong() * height.toLong()
+        require(
+            width > 0 &&
+                height > 0 &&
+                sourcePixelCount in 1..PersonMaskMath.MAX_MASK_PIXELS.toLong(),
+        ) { "Captured source frame exceeds the processing budget." }
 
         val binary = PersonMaskMath.thresholdAndDilate(
             confidence = confidence,

@@ -38,6 +38,27 @@ class PersonMaskMathTest {
         assertEquals(0, PersonMaskMath.coveragePercent(booleanArrayOf()))
     }
 
+
+    @Test
+    fun clampsLargeDilationRadiiToMaskBounds() {
+        val result = PersonMaskMath.thresholdAndDilate(
+            confidence = floatArrayOf(0f, 1f, 0f),
+            width = 3,
+            height = 1,
+            threshold = 0.5f,
+            radiusX = Int.MAX_VALUE,
+            radiusY = Int.MAX_VALUE,
+        )
+        assertEquals(listOf(true, true, true), result.toList())
+    }
+
+    @Test
+    fun rejectsOversizedDimensionsBeforeAllocatingOutput() {
+        assertThrows(IllegalArgumentException::class.java) {
+            PersonMaskMath.thresholdAndDilate(floatArrayOf(0f), 50_000, 50_000)
+        }
+    }
+
     @Test
     fun rejectsMismatchedMaskDimensions() {
         assertThrows(IllegalArgumentException::class.java) {
