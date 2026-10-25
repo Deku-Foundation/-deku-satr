@@ -13,8 +13,8 @@ class MaskHoldPolicyTest {
                 minimumCoveragePercent = 1,
                 previousMaskAvailable = true,
                 dimensionsMatch = true,
-                ageMs = 160L,
-                maximumAgeMs = 160L,
+                ageMs = 250L,
+                maximumAgeMs = 250L,
             ),
         )
     }
@@ -27,8 +27,8 @@ class MaskHoldPolicyTest {
                 minimumCoveragePercent = 1,
                 previousMaskAvailable = true,
                 dimensionsMatch = true,
-                ageMs = 161L,
-                maximumAgeMs = 160L,
+                ageMs = 251L,
+                maximumAgeMs = 250L,
             ),
         )
     }
@@ -42,7 +42,7 @@ class MaskHoldPolicyTest {
                 previousMaskAvailable = true,
                 dimensionsMatch = false,
                 ageMs = 100L,
-                maximumAgeMs = 160L,
+                maximumAgeMs = 250L,
             ),
         )
     }
@@ -56,7 +56,7 @@ class MaskHoldPolicyTest {
                 previousMaskAvailable = true,
                 dimensionsMatch = true,
                 ageMs = 100L,
-                maximumAgeMs = 160L,
+                maximumAgeMs = 250L,
             ),
         )
     }

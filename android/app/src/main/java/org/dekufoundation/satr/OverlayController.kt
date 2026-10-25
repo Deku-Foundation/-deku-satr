@@ -295,7 +295,7 @@ class OverlayController(
         // Fail-closed intentionally restores full opacity and may require the user to tap Stop.
         private const val NORMAL_FILTER_ALPHA = 0.8f
         private const val FAIL_CLOSED_ALPHA = 1.0f
-        private const val BITMAP_RELEASE_DELAY_MS = 100L
+        private const val BITMAP_RELEASE_DELAY_MS = 200L
         private const val PANEL_METRICS_REFRESH_MS = 900L
     }
 

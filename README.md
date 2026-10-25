@@ -20,7 +20,7 @@ Path: android/
 - Unit tests for capture-size policy, mask confidence bounds, and persisted filter-setting ranges.
 - GitHub Actions builds/tests the Android app, audits the merged manifest for the INTERNET permission, and uploads a debug APK artifact.
 
-The replacement is a general semantic person-mask candidate rather than a selfie-only API, and uses the LiteRT/TFLite Interpreter with a three-thread CPU/NNAPI path. It has not yet passed a labelled screen-frame benchmark or physical-device thermal/latency tests. The upstream converted artifact has no explicit license field in its model card, so licensing review remains a release gate. See Android architecture (docs/android-architecture.md), privacy notes (docs/android-privacy.md), and model evaluation (docs/model-evaluation.md).
+The live path uses a pinned, lightweight semantic person mask with tiled processing on tall/wide frames, reusable tensor buffers, NNAPI-to-CPU fallback, and a bounded temporal confidence blend to reduce boundary flicker. Screen resizing honors the selected capture profile. It remains an experimental filter and has not passed a labeled screen-frame benchmark or physical-device thermal/latency tests. The bundled model has one shared person mask, not separate masks or gender classes per individual. Per-person selective filtering remains a research task requiring a license-compatible instance model and a validated face/appearance classifier; until then the supported safe default is to blur all detected people. See Android architecture (docs/android-architecture.md), privacy notes (docs/android-privacy.md), and model evaluation (docs/model-evaluation.md).
 
 ## Download a development APK
 

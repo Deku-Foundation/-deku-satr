@@ -526,7 +526,7 @@ private fun SatrDashboard(
        ModelCard(snapshot);SafetyCard();HowItWorksCard()
       }
      }
-     Text("ستر بلور · SATR BLUR · من Deku Foundation · إصدار تجريبي 0.5.1",modifier=Modifier.fillMaxWidth().padding(top=4.dp),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,textAlign=TextAlign.Center)
+     Text("ستر بلور · SATR BLUR · من Deku Foundation · إصدار تجريبي 0.5.2",modifier=Modifier.fillMaxWidth().padding(top=4.dp),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,textAlign=TextAlign.Center)
     }
    }
   }
@@ -546,13 +546,13 @@ private fun WelcomeScreen(onContinue: () -> Unit, onOpenSource: () -> Unit) {
             modifier = Modifier.size(92.dp),
         )
         Text(
-            "حماية بصرية تبقى على جهازك",
+            "طمس محلي للصور ومحتوى الشاشة",
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.ExtraBold,
             textAlign = TextAlign.Center,
         )
         Text(
-            "يطمس ستر بلور المناطق التي يكتشفها في الصور وإطارات الشاشة، مع خيارات للتمويه والبكسلة والتغطية.",
+            "اختر صورة لمعالجتها أو ابدأ جلسة لحماية الشاشة. تبقى الصور على الهاتف، ويمكنك اختيار التمويه أو البكسلة أو التغطية.",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -690,14 +690,14 @@ private fun HeroPanel() {
                 )
             }
             Text(
-                text = "ستر بصري\nبقرارٍ واضح",
+                text = "طمس الأشخاص\nعلى الشاشة",
                 style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.ExtraBold,
                 color = Color.White,
                 lineHeight = 35.sp,
             )
             Text(
-                text = "يحلّل الإطارات على الهاتف ويطمس المناطق التي يكتشفها. قد يفوت النموذج بعض الأشخاص.",
+                text = "يعالج الشاشة على الهاتف ويطمس الأشخاص الذين يرصدهم. قد يفوت النموذج أشخاصاً صغاراً أو بعيدين.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color(0xFFF4F7F3),
                 lineHeight = 23.sp,
@@ -1029,7 +1029,7 @@ private fun TargetScopeCard() {
                 foreground = MaterialTheme.colorScheme.onPrimaryContainer,
             )
             Text(
-                "النموذج الحالي يرسم قناعاً للأشخاص ولا يصنّف الجنس. طول الشعر والملابس ليسا دليلاً موثوقاً على الجنس؛ لذلك لا يوجد خيار إخفاء انتقائي قبل اختبار نموذج منفصل ومعدلات أخطائه.",
+                "الإصدار الحالي يطمس جميع الأشخاص الذين يرصدهم. اختيار الرجال أو النساء يحتاج إلى قناع مستقل لكل شخص ومصنّف مُختبَر؛ هذه الميزة لم تُفعّل بعد. لا يُستخدم طول الشعر أو اللباس كبديل عن التصنيف.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 lineHeight = 21.sp,
