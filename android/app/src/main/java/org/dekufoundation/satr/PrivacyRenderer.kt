@@ -20,6 +20,7 @@ object PrivacyRenderer {
         maskWidth: Int,
         maskHeight: Int,
         threshold: Float = 0.48f,
+        blurRadius: Int = FilterSettings.blurRadius,
     ): RenderedPrivacyMask {
         require(maskWidth > 0 && maskHeight > 0)
         require(confidence.size == maskWidth * maskHeight)
@@ -40,7 +41,8 @@ object PrivacyRenderer {
 
         val sourcePixels = IntArray(width * height)
         source.getPixels(sourcePixels, 0, width, 0, 0, width, height)
-        val blurredPixels = boxBlur(sourcePixels, width, height, max(5, min(width, height) / 36))
+        val boundedBlur = blurRadius.coerceIn(FilterSettings.MIN_BLUR_RADIUS, FilterSettings.MAX_BLUR_RADIUS)
+        val blurredPixels = boxBlur(sourcePixels, width, height, max(boundedBlur, min(width, height) / 36))
         val outputPixels = IntArray(width * height)
 
         for (y in 0 until height) {
