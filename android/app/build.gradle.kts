@@ -104,7 +104,7 @@ tasks.named("preBuild").configure { dependsOn(downloadLrasppModel) }
 
 val rtmdetAssetsDirectory = layout.buildDirectory.dir("generated/rtmdetAssets")
 android.sourceSets.getByName("main").assets.srcDir(rtmdetAssetsDirectory.get().asFile)
-val rtmdetModelFile = rtmdetAssetsDirectory.map { it.file("rtmdet-ins_tiny_640x640.onnx") }
+val rtmdetModelFile = rtmdetAssetsDirectory.map { it.file("rtmdet-ins_s_640x640.onnx") }
 val rtmdetLicenseFile = rtmdetAssetsDirectory.map { it.file("RTMDET_INS_LICENSE") }
 val rtmdetNoticeFile = rtmdetAssetsDirectory.map { it.file("RTMDET_INS_NOTICE.md") }
 
@@ -149,17 +149,17 @@ val downloadRtmdetAssets by tasks.registering {
         }
 
         val revision = "e5218e8d47d7c50077f27f9893a28e0ef2ad5656"
-        if (!model.isFile || model.length() != 24_032_356L ||
-            digest(model) != "99ee670820c4493aa13e20578b6a8e39781c319846dc41796a77765734beac5c"
+        if (!model.isFile || model.length() != 43_236_976L ||
+            digest(model) != "9cd1787fbf3eb2bd64cc2d8154f41c036f5484b85599e1cbe0227a2dc5a4a08b"
         ) {
             download(
-                "https://huggingface.co/tori29umai/rtmdet-ins-onnx-person-masks/resolve/" + revision + "/models/tiny/rtmdet-ins_tiny_640x640.onnx",
+                "https://huggingface.co/tori29umai/rtmdet-ins-onnx-person-masks/resolve/" + revision + "/models/s/rtmdet-ins_s_640x640.onnx",
                 model,
             )
         }
         check(model.length() == 24_032_356L &&
             digest(model) == "99ee670820c4493aa13e20578b6a8e39781c319846dc41796a77765734beac5c"
-        ) { "RTMDet-Ins-tiny asset failed size/SHA-256 verification." }
+        ) { "RTMDet-Ins-S asset failed size/SHA-256 verification." }
 
         if (!license.isFile || license.length() == 0L) {
             download(
