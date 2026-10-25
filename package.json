@@ -16,6 +16,6 @@
   "devDependencies": {
     "vite": "6.4.1",
     "vite-plugin-pwa": "0.21.2",
-    "vitest": "3.2.4"
+    "vitest": "5.0.5"
   }
 }
