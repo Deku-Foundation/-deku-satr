@@ -295,6 +295,7 @@ class OverlayController(
         // Fail-closed intentionally restores full opacity and may require the user to tap Stop.
         private const val NORMAL_FILTER_ALPHA = 0.8f
         private const val FAIL_CLOSED_ALPHA = 1.0f
+        private const val BITMAP_RELEASE_DELAY_MS = 100L
         private const val PANEL_METRICS_REFRESH_MS = 900L
     }
 
@@ -315,9 +316,7 @@ class OverlayController(
             maskBitmap = bitmap
             failClosed = false
             invalidate()
-            if (previous != null && previous !== bitmap && !previous.isRecycled) {
-                previous.recycle()
-            }
+            if (previous != null && previous !== bitmap) recycleAfterDraw(previous)
         }
 
         fun showFailClosed() {
@@ -325,7 +324,15 @@ class OverlayController(
             maskBitmap = null
             failClosed = true
             invalidate()
-            if (previous != null && !previous.isRecycled) previous.recycle()
+            if (previous != null) recycleAfterDraw(previous)
+        }
+
+        private fun recycleAfterDraw(bitmap: Bitmap) {
+            // Hardware rendering can still reference the previous frame after invalidate().
+            // Delayed release avoids recycling a bitmap while a frame is being composed.
+            mainHandler.postDelayed({
+                if (maskBitmap !== bitmap && !bitmap.isRecycled) bitmap.recycle()
+            }, BITMAP_RELEASE_DELAY_MS)
         }
 
         fun dispose() {
