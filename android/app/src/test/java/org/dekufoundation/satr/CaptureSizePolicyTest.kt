@@ -17,6 +17,14 @@ class CaptureSizePolicyTest {
         assertEquals(CaptureSize(288, 640), CaptureSizePolicy.downsample(1080, 2400))
     }
 
+    @Test fun detailProfileAllows720PixelLongEdge() {
+        assertEquals(CaptureSize(324, 720), CaptureSizePolicy.downsample(1080, 2400, ProcessingProfile.DETAIL.maxEdge))
+    }
+
+    @Test fun powerSaverProfileUses480PixelLongEdge() {
+        assertEquals(CaptureSize(216, 480), CaptureSizePolicy.downsample(1080, 2400, ProcessingProfile.POWER_SAVER.maxEdge))
+    }
+
     @Test fun smallDisplayIsNotUpscaled() {
         assertEquals(CaptureSize(320, 500), CaptureSizePolicy.downsample(320, 500))
     }
