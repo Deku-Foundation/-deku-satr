@@ -55,7 +55,7 @@ Source: https://developers.google.com/ml-kit/vision/selfie-segmentation/android
 
 ### LiteRT runtime
 
-As of this update, Google's Android release table identifies LiteRT 2.2.0 as the latest listed CompiledModel release. The current overview recommends CompiledModel for new accelerated on-device inference; older Interpreter use remains available for compatibility. We should select a model artifact independently of the runtime and require CPU fallback where accelerators are unavailable.
+As verified against Google's current Android release table on 2026-10-25, LiteRT 2.3.0 is the latest listed CompiledModel release. The current overview recommends CompiledModel for new accelerated on-device inference; older Interpreter use remains available for compatibility. We should select a model artifact independently of the runtime and require CPU fallback where accelerators are unavailable.
 
 Sources:
 - https://developers.google.com/edge/litert/android
