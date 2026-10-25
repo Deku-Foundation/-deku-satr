@@ -65,4 +65,31 @@ class PersonMaskMathTest {
             PersonMaskMath.thresholdAndDilate(floatArrayOf(0f, 1f), 2, 2)
         }
     }
+
+    @Test
+    fun rejectsNonFiniteConfidenceValues() {
+        assertThrows(IllegalArgumentException::class.java) {
+            PersonMaskMath.thresholdAndDilate(floatArrayOf(0.2f, Float.NaN), 2, 1)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            PersonMaskMath.thresholdAndDilate(floatArrayOf(0.2f, Float.POSITIVE_INFINITY), 2, 1)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            PersonMaskMath.thresholdAndDilate(floatArrayOf(0.2f, Float.NEGATIVE_INFINITY), 2, 1)
+        }
+    }
+
+    @Test
+    fun rejectsConfidenceOutsideProbabilityRange() {
+        assertThrows(IllegalArgumentException::class.java) {
+            PersonMaskMath.thresholdAndDilate(floatArrayOf(0f, 1.01f), 2, 1)
+        }
+    }
+
+    @Test
+    fun rejectsNonFiniteThreshold() {
+        assertThrows(IllegalArgumentException::class.java) {
+            PersonMaskMath.thresholdAndDilate(floatArrayOf(0.5f), 1, 1, threshold = Float.NaN)
+        }
+    }
 }
