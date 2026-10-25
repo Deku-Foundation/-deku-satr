@@ -361,7 +361,7 @@ class ScreenCaptureService : Service() {
             worker.execute {
                 try {
                     if (stopping || frameGeneration != captureGeneration) return@execute
-                    val mask = currentSegmenter.process(frame)
+                    val mask = currentSegmenter.process(frame, FilterSettings.processingProfile.tileWideFrames)
                     val freshValues = mask.confidence
                     val threshold = FilterSettings.confidenceThreshold
                     val expansion = FilterSettings.maskExpansionRadius
