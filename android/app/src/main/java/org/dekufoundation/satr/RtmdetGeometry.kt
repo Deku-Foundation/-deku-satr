@@ -1,6 +1,7 @@
 package org.dekufoundation.satr
 
 import kotlin.math.roundToInt
+import java.nio.FloatBuffer
 
 data class RtmdetResizePlan(
     val sourceWidth: Int,
@@ -42,6 +43,39 @@ object RtmdetGeometry {
         val resizedWidth = (width * scale).roundToInt().coerceIn(1, inputSize)
         val resizedHeight = (height * scale).roundToInt().coerceIn(1, inputSize)
         return RtmdetResizePlan(width, height, scale, resizedWidth, resizedHeight, inputSize)
+    }
+
+    /** Samples one instance directly from the ONNX output buffer without allocating a 1.6 MB copy. */
+    fun sampleMask(
+        mask: FloatBuffer,
+        offset: Int,
+        plan: RtmdetResizePlan,
+        threshold: Float = 0.5f,
+    ): BooleanArray {
+        val size = plan.inputSize
+        val planeSize = size.toLong() * size
+        require(offset >= 0 && offset.toLong() + planeSize <= mask.limit().toLong())
+        require(threshold.isFinite() && threshold in 0f..1f)
+        val outputPixels = plan.sourceWidth.toLong() * plan.sourceHeight
+        require(outputPixels in 1..PersonMaskMath.MAX_MASK_PIXELS.toLong())
+        val output = BooleanArray(outputPixels.toInt())
+        for (y in 0 until plan.sourceHeight) {
+            val sourceY = (((y + 0.5f) * plan.scale) - 0.5f).coerceIn(0f, (plan.resizedHeight - 1).toFloat())
+            val y0 = sourceY.toInt()
+            val y1 = (y0 + 1).coerceAtMost(plan.resizedHeight - 1)
+            val fy = sourceY - y0
+            for (x in 0 until plan.sourceWidth) {
+                val sourceX = (((x + 0.5f) * plan.scale) - 0.5f).coerceIn(0f, (plan.resizedWidth - 1).toFloat())
+                val x0 = sourceX.toInt()
+                val x1 = (x0 + 1).coerceAtMost(plan.resizedWidth - 1)
+                val fx = sourceX - x0
+                fun at(px: Int, py: Int) = mask.get(offset + py * size + px)
+                val top = at(x0, y0) * (1f - fx) + at(x1, y0) * fx
+                val bottom = at(x0, y1) * (1f - fx) + at(x1, y1) * fx
+                output[y * plan.sourceWidth + x] = top * (1f - fy) + bottom * fy > threshold
+            }
+        }
+        return output
     }
 
     fun sampleMask(
