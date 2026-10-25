@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Rect
 import org.tensorflow.lite.Interpreter
 import java.io.File
 import java.io.FileOutputStream
@@ -43,6 +44,10 @@ class LrasppPersonSegmenter(context: Context) : AutoCloseable {
     private lateinit var inputBuffer: ByteBuffer
     private lateinit var outputBuffer: ByteBuffer
     private lateinit var pixels: IntArray
+    private lateinit var inputBitmap: Bitmap
+    private lateinit var inputCanvas: Canvas
+    private val inputRect = Rect()
+    private val inputPaint = Paint(Paint.FILTER_BITMAP_FLAG)
 
     init {
         modelFile = File(context.cacheDir, MODEL_FILE)
@@ -98,6 +103,8 @@ class LrasppPersonSegmenter(context: Context) : AutoCloseable {
         outputBuffer = ByteBuffer.allocateDirect(outputCount.toInt() * Float.SIZE_BYTES)
             .order(ByteOrder.nativeOrder())
         pixels = IntArray(inputWidth * inputHeight)
+        inputBitmap = Bitmap.createBitmap(inputWidth, inputHeight, Bitmap.Config.ARGB_8888)
+        inputCanvas = Canvas(inputBitmap)
     }
 
     @Synchronized
@@ -144,16 +151,11 @@ class LrasppPersonSegmenter(context: Context) : AutoCloseable {
         val left = (inputWidth - resizedWidth) / 2
         val top = (inputHeight - resizedHeight) / 2
 
-        // Letterbox with the ImageNet mean so padding becomes approximately zero after normalization.
-        val inputBitmap = Bitmap.createBitmap(inputWidth, inputHeight, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(inputBitmap)
-        canvas.drawColor(Color.rgb(123, 116, 103))
-        val scaled = Bitmap.createScaledBitmap(source, resizedWidth, resizedHeight, true)
-        try {
-            canvas.drawBitmap(scaled, left.toFloat(), top.toFloat(), Paint(Paint.FILTER_BITMAP_FLAG))
-        } finally {
-            if (scaled !== source && !scaled.isRecycled) scaled.recycle()
-        }
+        // Letterbox into one reusable scratch bitmap. Drawing into a destination rectangle
+        // scales the source directly and avoids allocating a temporary bitmap per frame/tile.
+        inputCanvas.drawColor(Color.rgb(123, 116, 103))
+        inputRect.set(left, top, left + resizedWidth, top + resizedHeight)
+        inputCanvas.drawBitmap(source, null, inputRect, inputPaint)
 
         inputBuffer.clear()
         outputBuffer.clear()
@@ -161,7 +163,6 @@ class LrasppPersonSegmenter(context: Context) : AutoCloseable {
         val output = outputBuffer
         val inputFloats = input.asFloatBuffer()
         inputBitmap.getPixels(pixels, 0, inputWidth, 0, 0, inputWidth, inputHeight)
-        inputBitmap.recycle()
         for (channel in 0..2) {
             for (y in 0 until inputHeight) {
                 for (x in 0 until inputWidth) {
@@ -259,8 +260,14 @@ class LrasppPersonSegmenter(context: Context) : AutoCloseable {
         if (outputNchw) classIndex * outputWidth * outputHeight + y * outputWidth + x
         else (y * outputWidth + x) * outputClasses + classIndex
 
+    @Synchronized
     override fun close() {
-        interpreter.close()
+        runCatching { interpreter.close() }
+        if (::pixels.isInitialized) pixels.fill(0)
+        if (::inputBitmap.isInitialized && !inputBitmap.isRecycled) {
+            inputBitmap.eraseColor(Color.TRANSPARENT)
+            inputBitmap.recycle()
+        }
     }
 
     private fun sha256(file: File): String {

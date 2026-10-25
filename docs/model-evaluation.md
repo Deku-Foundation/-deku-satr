@@ -210,3 +210,10 @@ The low-latency capture profile uses a 360 px long edge, an 80 ms minimum admiss
 During warm-up, the full-screen green placeholder is gone. The control panel says filtering is not active until the first successful mask. A real inference error or stale session still uses an opaque fail-closed surface, now charcoal. The control panel starts compact and reveals details on tap.
 
 Gender classification is not added. The current semantic mask cannot separate individuals. Selective targeting requires a compatible instance mask model and explicit user selection; see issue #11.
+
+
+## Allocation reduction (0.5.4)
+
+The LR-ASPP preprocessor keeps one fixed-size input bitmap and canvas, draws each source frame/tile directly into the destination rectangle, and reuses the existing direct input/output buffers and pixel array. This removes the per-inference temporary scaled bitmap and input bitmap allocations while preserving the same letterbox dimensions, ImageNet normalization, channel order, and output-mask mapping. The scratch bitmap and pixel array are cleared/released when the segmenter closes.
+
+This is a code-level allocation reduction. No latency or memory percentage is claimed until measured on physical devices.
