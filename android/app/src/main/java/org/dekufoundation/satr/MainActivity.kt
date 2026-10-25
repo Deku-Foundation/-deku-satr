@@ -613,7 +613,7 @@ private fun ProcessingProfileCard(profile:ProcessingProfile,onChange:(Processing
     Row(verticalAlignment=Alignment.CenterVertically,modifier=Modifier.fillMaxWidth()){
      Column(Modifier.weight(1f)){
       Text(label,style=MaterialTheme.typography.bodyLarge,fontWeight=FontWeight.SemiBold)
-      Text(when(option){ProcessingProfile.POWER_SAVER->"480px · حمل أقل";ProcessingProfile.BALANCED->"640px · الإعداد الافتراضي";ProcessingProfile.DETAIL->"720px · حمل أعلى"},style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+      Text(when(option){ProcessingProfile.POWER_SAVER->"480px · حمل أقل، دون تقسيم الإطار";ProcessingProfile.BALANCED->"640px · تقسيم الإطارات الطويلة مع تداخل";ProcessingProfile.DETAIL->"720px · تغطية أدق محتملة، وحمل أعلى"},style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
      }
      if(option==profile) StatusPill("محدد",MaterialTheme.colorScheme.primaryContainer,MaterialTheme.colorScheme.onPrimaryContainer)
      else OutlinedButton(onClick={onChange(option)},modifier=Modifier.heightIn(min=48.dp)){Text("اختيار")}
@@ -1201,7 +1201,7 @@ private fun SafetyCard() {
                 Text("حدود النموذج", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFF613E00))
             }
             Text(
-                "LR-ASPP نموذج تقسيم دلالي لفئة الشخص، وليس تتبّعاً منفصلاً لكل فرد ولا مصنّفاً للجنس. قد يفوّت الأشخاص الصغار أو البعيدين أو المحجوبين. لا يمكن اعتبار التغطية كاملة قبل اختبارات أجهزة حقيقية؛ وقد يمنع Android التقاط بعض النوافذ الآمنة أو فيديو DRM.",
+                "LR-ASPP نموذج تقسيم دلالي لفئة الشخص، وليس تتبّعاً منفصلاً لكل فرد ولا مصنّفاً للجنس. في وضعي المتوازن والتفاصيل، تُحلّل الإطارات الطويلة/العريضة على قصاصات متداخلة لتحسين حجم الأشخاص داخل النموذج، لكن ذلك يزيد الحمل وقد يخفض معدل الإطارات. قد يفوّت النموذج الأشخاص الصغار أو البعيدين أو المحجوبين. لا يمكن اعتبار التغطية كاملة قبل اختبارات أجهزة حقيقية؛ وقد يمنع Android التقاط بعض النوافذ الآمنة أو فيديو DRM.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color(0xFF613E00),
                 lineHeight = 22.sp,
