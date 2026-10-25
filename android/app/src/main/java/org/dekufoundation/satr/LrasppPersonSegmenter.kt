@@ -86,7 +86,42 @@ class LrasppPersonSegmenter(context: Context) : AutoCloseable {
     }
 
     @Synchronized
-    fun process(source: Bitmap): PersonSegmentationMask {
+    fun process(source: Bitmap, tileWideFrames: Boolean = true): PersonSegmentationMask {
+        require(!source.isRecycled && source.width > 0 && source.height > 0)
+        val tiles = SegmentationTilePolicy.plan(source.width, source.height, tileWideFrames)
+        if (tiles.size == 1 && tiles[0].left == 0 && tiles[0].top == 0 &&
+            tiles[0].width == source.width && tiles[0].height == source.height
+        ) {
+            return processSingle(source)
+        }
+
+        val pixelCount = source.width.toLong() * source.height.toLong()
+        require(pixelCount in 1..PersonMaskMath.MAX_MASK_PIXELS.toLong()) {
+            "Frame is too large for tiled segmentation."
+        }
+        val merged = FloatArray(pixelCount.toInt())
+        for (tile in tiles) {
+            val crop = Bitmap.createBitmap(source, tile.left, tile.top, tile.width, tile.height)
+            val mask = try {
+                processSingle(crop)
+            } finally {
+                if (!crop.isRecycled) crop.recycle()
+            }
+            for (y in 0 until tile.height) {
+                val maskY = min(mask.height - 1, (y.toLong() * mask.height / tile.height).toInt())
+                val targetRow = (tile.top + y) * source.width + tile.left
+                val maskRow = maskY * mask.width
+                for (x in 0 until tile.width) {
+                    val maskX = min(mask.width - 1, (x.toLong() * mask.width / tile.width).toInt())
+                    val targetIndex = targetRow + x
+                    merged[targetIndex] = max(merged[targetIndex], mask.confidence[maskRow + maskX])
+                }
+            }
+        }
+        return PersonSegmentationMask(source.width, source.height, merged)
+    }
+
+    private fun processSingle(source: Bitmap): PersonSegmentationMask {
         require(!source.isRecycled && source.width > 0 && source.height > 0)
         val scale = minOf(inputWidth.toFloat() / source.width, inputHeight.toFloat() / source.height)
         val resizedWidth = (source.width * scale).roundToInt().coerceIn(1, inputWidth)
