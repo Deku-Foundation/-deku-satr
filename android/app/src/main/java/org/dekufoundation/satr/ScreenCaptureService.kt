@@ -35,7 +35,11 @@ class ScreenCaptureService : Service() {
     private var captureThread: HandlerThread? = null
     private var captureHandler: Handler? = null
     private var overlayController: OverlayController? = null
-    @Volatile private var segmenter: LrasppPersonSegmenter? = null
+    @Volatile private var segmenter: PersonSegmentationEngine? = null
+    @Volatile private var activePersonModelProfile: PersonModelProfile = PersonModelProfile.FAST_SEMANTIC
+    private val personTrackAssociator = PersonTrackAssociator()
+    private var lastTargetMode = PersonTargetMode.MASK_ALL
+    private var lastSelectedTrackIds: Set<Long> = emptySet()
     private var inferenceExecutor: ExecutorService? = null
     private val inferenceBusy = AtomicBoolean(false)
     private val temporalMaskSmoother = TemporalMaskSmoother()
@@ -136,6 +140,9 @@ class ScreenCaptureService : Service() {
             SatrSessionSnapshot(
                 phase = SatrPhase.STARTING,
                 detail = "يجري إعداد الالتقاط والنموذج المضمّن؛ لم تُثبت الحماية بعد.",
+                personModelProfile = activePersonModelProfile,
+                personTargetMode = FilterSettings.personTargetMode,
+                selectedTrackIds = emptySet(),
             ),
         )
 
@@ -167,6 +174,12 @@ class ScreenCaptureService : Service() {
     ) {
         stopping = false
         terminalError = false
+        activePersonModelProfile = FilterSettings.personModelProfile
+        FilterSettings.personTargetMode = PersonTargetMode.MASK_ALL
+        FilterSettings.selectedPersonTrackIds = emptySet()
+        personTrackAssociator.reset()
+        lastTargetMode = PersonTargetMode.MASK_ALL
+        lastSelectedTrackIds = emptySet()
         synchronized(this) {
             personFramesInARow = 0
             emptyFramesInARow = 0
@@ -198,7 +211,10 @@ class ScreenCaptureService : Service() {
             ?: throw IllegalStateException("The inference executor could not be created.")
         modelExecutor.execute {
             try {
-                val loadedModel = LrasppPersonSegmenter(applicationContext)
+                val loadedModel: PersonSegmentationEngine = when (activePersonModelProfile) {
+                    PersonModelProfile.FAST_SEMANTIC -> LrasppPersonSegmenter(applicationContext)
+                    PersonModelProfile.RTMDET_INS_S -> RtmdetPersonSegmenter(applicationContext)
+                }
                 synchronized(this) {
                     if (stopping) loadedModel.close() else segmenter = loadedModel
                 }
@@ -278,6 +294,11 @@ class ScreenCaptureService : Service() {
             lastGoodMaskHeight = 0
             lastGoodMaskAtMs = 0L
             temporalMaskSmoother.reset()
+            personTrackAssociator.reset()
+            FilterSettings.personTargetMode = PersonTargetMode.MASK_ALL
+            FilterSettings.selectedPersonTrackIds = emptySet()
+            lastTargetMode = PersonTargetMode.MASK_ALL
+            lastSelectedTrackIds = emptySet()
         }
         failClosed("تغيّر اتجاه الشاشة أو حجمها؛ يجري ضبط الفلترة مجدداً.")
 
