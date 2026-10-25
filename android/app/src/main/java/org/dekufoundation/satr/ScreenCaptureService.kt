@@ -269,7 +269,7 @@ class ScreenCaptureService : Service() {
             inferenceBusy.set(false)
             if (stopping) closeSegmenterIfSafe()
             else if (frameGeneration == captureGeneration) {
-                failClosed("تعذر قراءة إطار الشاشة؛ غُطّيت الشاشة احتياطياً.")
+                failClosed("تعذر قراءة إطار الشاشة؛ غُطّيت الشاشة احتياطياً.", frameGeneration)
             }
             return
         } finally {
@@ -288,7 +288,7 @@ class ScreenCaptureService : Service() {
             inferenceBusy.set(false)
             if (stopping) closeSegmenterIfSafe()
             else if (frameGeneration == captureGeneration) {
-                failClosed("لم تصل صورة شاشة قابلة للتحليل؛ غُطّيت الشاشة احتياطياً.")
+                failClosed("لم تصل صورة شاشة قابلة للتحليل؛ غُطّيت الشاشة احتياطياً.", frameGeneration)
             }
             return
         }
@@ -320,7 +320,7 @@ class ScreenCaptureService : Service() {
                             try {
                                 if (stopping || frameGeneration != captureGeneration) return@execute
                                 if (!task.isSuccessful) {
-                                    failClosed("فشل تحليل الإطار؛ غُطّيت الشاشة حتى عودة المعالجة.")
+                                    failClosed("فشل تحليل الإطار؛ غُطّيت الشاشة حتى عودة المعالجة.", frameGeneration)
                                     return@execute
                                 }
                                 val mask = task.result
@@ -367,7 +367,7 @@ class ScreenCaptureService : Service() {
                                 if (!published && !rendered.overlay.isRecycled) rendered.overlay.recycle()
                             } catch (_: Exception) {
                                 if (!stopping && frameGeneration == captureGeneration) {
-                                    failClosed("تعذر إنشاء قناع التمويه؛ غُطّيت الشاشة احتياطياً.")
+                                    failClosed("تعذر إنشاء قناع التمويه؛ غُطّيت الشاشة احتياطياً.", frameGeneration)
                                 }
                             } finally {
                                 if (!frame.isRecycled) frame.recycle()
@@ -386,7 +386,7 @@ class ScreenCaptureService : Service() {
             inferenceBusy.set(false)
             if (stopping) closeSegmenterIfSafe()
             else if (frameGeneration == captureGeneration) {
-                failClosed("تعذر تشغيل النموذج؛ غُطّيت الشاشة احتياطياً.")
+                failClosed("تعذر تشغيل النموذج؛ غُطّيت الشاشة احتياطياً.", frameGeneration)
             }
         }
     }
@@ -476,16 +476,22 @@ class ScreenCaptureService : Service() {
         }
     }
 
-    private fun failClosed(detail: String) {
-        if (stopping) return
-        val current = SessionStatus.current()
-        val next = current.copy(
-            phase = SatrPhase.FAIL_CLOSED,
-            detail = detail,
-        )
-        SessionStatus.publish(next)
-        overlayController?.showFailClosed(detail)
-        overlayController?.updateSession(next)
+    private fun failClosed(detail: String, expectedGeneration: Long? = null) {
+        synchronized(this) {
+            if (stopping) return
+            if (expectedGeneration != null && expectedGeneration != captureGeneration) return
+
+            val current = SessionStatus.current()
+            val next = current.copy(
+                phase = SatrPhase.FAIL_CLOSED,
+                detail = detail,
+            )
+            SessionStatus.publish(next)
+            // Queue the full-cover UI update while still holding the state lock so a stale
+            // error cannot appear above a newer successful frame.
+            overlayController?.showFailClosed(detail)
+            overlayController?.updateSession(next)
+        }
     }
 
     private fun publishStartError(detail: String) {
