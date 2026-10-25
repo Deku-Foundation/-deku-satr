@@ -5,7 +5,12 @@ import android.content.SharedPreferences
 import kotlin.math.roundToInt
 
 enum class PrivacyEffect { BLUR, PIXELATE, COVER }
-enum class ProcessingProfile(val maxEdge: Int, val frameIntervalMs: Long, val tileWideFrames: Boolean) { POWER_SAVER(480, 200L, false), BALANCED(640, 180L, true), DETAIL(720, 140L, true) }
+enum class ProcessingProfile(val maxEdge: Int, val frameIntervalMs: Long, val tileWideFrames: Boolean) {
+    LOW_LATENCY(360, 80L, false),
+    POWER_SAVER(480, 200L, false),
+    BALANCED(640, 180L, true),
+    DETAIL(720, 140L, true),
+}
 
 object FilterSettings {
     const val MIN_BLUR_RADIUS = 4
