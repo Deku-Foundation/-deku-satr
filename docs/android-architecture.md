@@ -1,11 +1,12 @@
 # Native Android architecture
 
-Updated: 2026-10-25. The project now contains an embedded model and a full-screen mask renderer; Android/OEM behavior remains unvalidated outside GitHub-hosted build tests.
+Updated: 2026-10-25. This branch contains an embedded segmentation baseline and a full-screen mask renderer; Android/OEM behavior remains unvalidated outside GitHub-hosted build tests.
 
 ## Implemented on this branch
 
-- Kotlin Android app: min SDK 26, compile/target SDK 36, JDK 17, Gradle 8.13.
+- Kotlin Android app: min SDK 26, compile/target SDK 36, JDK 17, AGP 8.13.2, Gradle 8.13.
 - Arabic-first responsive Material 3 1.4.0 UI, system light/dark themes, permission state, inference counters, latest inference time, mask coverage, and a blur-strength control.
+- Compose UI/Foundation 1.11.4, the newest stable series compatible with the stable Android API 36 toolchain used here.
 - Explicit user permission for overlay access and fresh MediaProjection consent for each capture session.
 - A mediaProjection foreground service with persistent notification and immediate stop action.
 - A touch-pass-through transparent full-screen filter overlay and a separate draggable status/stop panel.
@@ -13,6 +14,16 @@ Updated: 2026-10-25. The project now contains an embedded model and a full-scree
 - Frames capped at a longest edge of 640 pixels, a two-image ImageReader, a 250 ms inference throttle, and a single in-flight inference task.
 - A CPU two-pass box blur clipped to a thresholded/dilated person mask. Failed inference triggers an opaque fail-closed overlay while the user-accessible stop panel remains visible.
 - Unit tests for capture scaling, mask thresholding, dilation, and coverage. Android CI builds a debug APK and checks that the merged manifest does not include INTERNET permission.
+
+## Why this dependency set
+
+Compose 1.12.1 was considered but requires compileSdk 37 and AGP 9.2+; the Android SDK setup on the current CI runner did not provide the API 37 platform package. Rather than depend on an unavailable/preview SDK, this branch uses the latest stable Compose 1.11.4 release with API 36 and AGP 8.13.2.
+
+Official release notes:
+- Compose UI 1.11.4: https://developer.android.com/jetpack/androidx/releases/compose-ui
+- Compose Foundation 1.11.4: https://developer.android.com/jetpack/androidx/releases/compose-foundation
+- Material 3 1.4.0: https://developer.android.com/jetpack/androidx/releases/compose-material3
+- AGP 8.13.2: https://developer.android.com/build/releases/past-releases/agp-8-13-0-release-notes
 
 ## Model choice
 
