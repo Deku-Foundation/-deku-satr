@@ -56,6 +56,10 @@ class ScreenCaptureService : Service() {
     private var sessionStartedAtMs = 0L
     private var personFramesInARow = 0
     private var emptyFramesInARow = 0
+    private var lastGoodConfidence: FloatArray? = null
+    private var lastGoodMaskWidth = 0
+    private var lastGoodMaskHeight = 0
+    private var lastGoodMaskAtMs = 0L
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onCapturedContentResize(width: Int, height: Int) {
@@ -168,7 +172,14 @@ class ScreenCaptureService : Service() {
     ) {
         stopping = false
         terminalError = false
-        synchronized(this) { personFramesInARow = 0; emptyFramesInARow = 0 }
+        synchronized(this) {
+            personFramesInARow = 0
+            emptyFramesInARow = 0
+            lastGoodConfidence = null
+            lastGoodMaskWidth = 0
+            lastGoodMaskHeight = 0
+            lastGoodMaskAtMs = 0L
+        }
         inferenceBusy.set(false)
         lastFrameAcceptedMs = 0L
         lastSuccessfulFrameMs = SystemClock.elapsedRealtime()
@@ -253,6 +264,12 @@ class ScreenCaptureService : Service() {
         val nextGeneration = captureGeneration + 1L
         synchronized(this) { captureGeneration = nextGeneration }
         lastSuccessfulFrameMs = SystemClock.elapsedRealtime()
+        synchronized(this) {
+            lastGoodConfidence = null
+            lastGoodMaskWidth = 0
+            lastGoodMaskHeight = 0
+            lastGoodMaskAtMs = 0L
+        }
         failClosed("تغيّر اتجاه الشاشة أو حجمها؛ يجري ضبط الفلترة مجدداً.")
 
         val nextReader = try {
@@ -352,7 +369,36 @@ class ScreenCaptureService : Service() {
                                 }
                                 val mask = task.result
                                     ?: throw IllegalStateException("The segmentation mask was empty.")
-                                val values = copyConfidence(mask)
+                                val freshValues = copyConfidence(mask)
+                                val threshold = FilterSettings.confidenceThreshold
+                                val expansion = FilterSettings.maskExpansionRadius
+                                val freshCoverage = PersonMaskMath.coveragePercent(
+                                    PersonMaskMath.thresholdAndDilate(
+                                        confidence = freshValues,
+                                        width = mask.width,
+                                        height = mask.height,
+                                        threshold = threshold,
+                                        radiusX = expansion,
+                                        radiusY = expansion,
+                                    ),
+                                )
+                                val frameNow = SystemClock.elapsedRealtime()
+                                val values = synchronized(this) {
+                                    if (freshCoverage > MIN_PERSON_COVERAGE_PERCENT) {
+                                        lastGoodConfidence = freshValues.copyOf()
+                                        lastGoodMaskWidth = mask.width
+                                        lastGoodMaskHeight = mask.height
+                                        lastGoodMaskAtMs = frameNow
+                                        freshValues
+                                    } else {
+                                        val cached = lastGoodConfidence
+                                        if (cached != null &&
+                                            lastGoodMaskWidth == mask.width &&
+                                            lastGoodMaskHeight == mask.height &&
+                                            frameNow - lastGoodMaskAtMs <= MASK_HOLD_MS
+                                        ) cached.copyOf() else freshValues
+                                    }
+                                }
                                 val rendered = PrivacyRenderer.render(
                                     source = frame,
                                     confidence = values,
@@ -360,7 +406,8 @@ class ScreenCaptureService : Service() {
                                     maskHeight = mask.height,
                                     blurRadius = FilterSettings.blurRadius,
                                     threshold = FilterSettings.confidenceThreshold,
-                                    maskExpansionRadius = FilterSettings.maskExpansionRadius,
+                                    maskExpansionRadius = expansion,
+                                    effect = FilterSettings.effect,
                                 )
                                 val activeOverlay = overlayController
                                 if (activeOverlay == null) {
@@ -693,7 +740,8 @@ class ScreenCaptureService : Service() {
         private const val OPEN_PENDING_INTENT_REQUEST = 410
         private const val STOP_PENDING_INTENT_REQUEST = 411
         private const val MAX_IMAGES = 2
-        private const val MIN_FRAME_INTERVAL_MS = 250L
+        private const val MIN_FRAME_INTERVAL_MS = 140L
+        private const val MASK_HOLD_MS = 650L
         private const val STALE_FRAME_LIMIT_MS = 3_500L
         private const val WATCHDOG_INTERVAL_MS = 500L
         private const val MAX_MASK_PIXELS = 2_000_000
