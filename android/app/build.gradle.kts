@@ -17,8 +17,8 @@ android {
         applicationId = "org.dekufoundation.satr"
         minSdk = 26
         targetSdk = 36
-        versionCode = 11
-        versionName = "0.5.4"
+        versionCode = 12
+        versionName = "0.6.1"
         testInstrumentationRunner = "android.test.InstrumentationTestRunner"
     }
 
@@ -60,6 +60,7 @@ android.sourceSets.getByName("main").assets.srcDir(
 
 val downloadLrasppModel by tasks.registering {
     outputs.file(lrasppModelFile)
+    outputs.upToDateWhen { false }
     doLast {
         val output = lrasppModelFile.get().asFile
         fun digest(file: java.io.File): String {
@@ -109,6 +110,7 @@ val rtmdetNoticeFile = rtmdetAssetsDirectory.map { it.file("RTMDET_INS_NOTICE.md
 
 val downloadRtmdetAssets by tasks.registering {
     outputs.files(rtmdetModelFile, rtmdetLicenseFile, rtmdetNoticeFile)
+    outputs.upToDateWhen { false }
     doLast {
         val model = rtmdetModelFile.get().asFile
         val license = rtmdetLicenseFile.get().asFile
