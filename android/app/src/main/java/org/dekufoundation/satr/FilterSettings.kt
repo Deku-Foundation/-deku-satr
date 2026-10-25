@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.SharedPreferences
 import kotlin.math.roundToInt
 
+enum class PrivacyEffect { BLUR, PIXELATE, COVER }
+
 object FilterSettings {
     const val MIN_BLUR_RADIUS = 4
     const val MAX_BLUR_RADIUS = 36
@@ -16,6 +18,9 @@ object FilterSettings {
 
     @Volatile
     private var preferences: SharedPreferences? = null
+
+    @Volatile
+    var effect: PrivacyEffect = PrivacyEffect.BLUR
 
     @Volatile
     var blurStrengthPercent: Int = DEFAULT_BLUR_STRENGTH_PERCENT
@@ -51,12 +56,14 @@ object FilterSettings {
     fun initialize(context: Context) {
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         preferences = prefs
+        effect = runCatching { PrivacyEffect.valueOf(prefs.getString("privacy_effect", PrivacyEffect.BLUR.name) ?: PrivacyEffect.BLUR.name) }.getOrDefault(PrivacyEffect.BLUR)
         blurStrengthPercent = prefs.getInt("blur_strength_percent", DEFAULT_BLUR_STRENGTH_PERCENT)
         confidenceThreshold = prefs.getFloat("confidence_threshold", DEFAULT_CONFIDENCE_THRESHOLD)
         maskExpansionRadius = prefs.getInt("mask_expansion_radius", DEFAULT_MASK_EXPANSION_RADIUS)
     }
 
     fun resetToDefaults() {
+        effect = PrivacyEffect.BLUR
         blurStrengthPercent = DEFAULT_BLUR_STRENGTH_PERCENT
         confidenceThreshold = DEFAULT_CONFIDENCE_THRESHOLD
         maskExpansionRadius = DEFAULT_MASK_EXPANSION_RADIUS
@@ -68,6 +75,7 @@ object FilterSettings {
                 preferences = it
             }
         prefs.edit()
+            .putString("privacy_effect", effect.name)
             .putInt("blur_strength_percent", blurStrengthPercent)
             .putFloat("confidence_threshold", confidenceThreshold)
             .putInt("mask_expansion_radius", maskExpansionRadius)
