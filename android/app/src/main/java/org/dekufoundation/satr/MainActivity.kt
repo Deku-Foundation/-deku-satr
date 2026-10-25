@@ -331,13 +331,13 @@ class MainActivity : ComponentActivity() {
 }
 
 private val SatrLightColors = lightColorScheme(
-    primary = Color(0xFF12372A),
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFD9ECE2),
+    primary = Color(0xFF1F7A58),
+    onPrimary = Color(0xFFF4F7F3),
+    primaryContainer = Color(0xFFDCEBDD),
     onPrimaryContainer = Color(0xFF12372A),
-    secondary = Color(0xFF1F7A58),
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFFE6EFE9),
+    secondary = Color(0xFFD9B45A),
+    onSecondary = Color(0xFF12372A),
+    secondaryContainer = Color(0xFFF3E7C1),
     onSecondaryContainer = Color(0xFF12372A),
     background = Color(0xFFF4F7F3),
     onBackground = Color(0xFF12372A),
@@ -848,7 +848,7 @@ private fun FilterSettingsCard(
             if (effect != PrivacyEffect.COVER) {
             Text(if (effect == PrivacyEffect.BLUR) "قوة التمويه" else "حجم البكسلة", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("قوة التمويه", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                Text(if (effect == PrivacyEffect.BLUR) "قوة التمويه" else "حجم البكسلة", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                 StatusPill(
                     label = "${blurStrength.roundToInt()}%",
                     container = MaterialTheme.colorScheme.primaryContainer,
