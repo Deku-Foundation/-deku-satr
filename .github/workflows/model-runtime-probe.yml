@@ -19,6 +19,16 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      - name: Read pinned model card and preprocessing contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --connect-timeout 20 --max-time 60 \
+            "https://huggingface.co/tori29umai/rtmdet-ins-onnx-person-masks/resolve/e5218e8d47d7c50077f27f9893a28e0ef2ad5656/README.md" -o model-readme.md
+          echo "--- model readme ---"
+          sed -n '1,240p' model-readme.md
+          echo "--- preprocessing and output references ---"
+          grep -niE 'preprocess|mean|std|normalize|padding|letterbox|outputs|mask_overlap|score_thr|dets|labels|masks' model-readme.md | head -100 || true
       - name: Download pinned RTMDet-Ins-S and check integrity
         shell: bash
         run: |
