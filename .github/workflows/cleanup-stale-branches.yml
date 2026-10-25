@@ -30,6 +30,7 @@ jobs:
             "feat/android-native-foundation"
           )
 
+          current_branches="$(gh api "repos/$GITHUB_REPOSITORY/branches?per_page=100" --jq '.[].name')"
           for branch in "${stale_branches[@]}"; do
             case "$branch" in
               main|dev)
@@ -37,8 +38,15 @@ jobs:
                 exit 1
                 ;;
             esac
+            if ! grep -Fxq "$branch" <<< "$current_branches"; then
+              echo "Branch already absent: $branch"
+              continue
+            fi
             echo "Deleting obsolete branch: $branch"
-            gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$branch"
+            if ! gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$branch"; then
+              encoded_ref="$(python -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "heads/$branch")"
+              gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/$encoded_ref"
+            fi
           done
 
           remaining="$(gh api "repos/$GITHUB_REPOSITORY/branches?per_page=100" --jq '.[].name' | grep -Ev '^(main|dev)$' || true)"
