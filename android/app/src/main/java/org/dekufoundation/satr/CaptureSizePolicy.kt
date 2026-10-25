@@ -5,7 +5,7 @@ import kotlin.math.roundToInt
 data class CaptureSize(val width: Int, val height: Int)
 
 object CaptureSizePolicy {
-    const val DEFAULT_MAX_EDGE = 960
+    const val DEFAULT_MAX_EDGE = 640
 
     /** Down-scales a display without changing its aspect ratio or up-scaling it. */
     fun downsample(width: Int, height: Int, maxEdge: Int = DEFAULT_MAX_EDGE): CaptureSize {
