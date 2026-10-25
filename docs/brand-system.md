@@ -1,4 +1,4 @@
-# Deku Foundation and Deku Satr visual system
+# Deku Foundation and Satr Blur visual system
 
 Updated: 2026-10-25. This document separates the institutional identity from the product UI. It does not replace an approved Foundation logo or claim that the current app is a final brand release.
 
@@ -9,15 +9,15 @@ Updated: 2026-10-25. This document separates the institutional identity from the
 
 ## Satr tokens
 These are product tokens, not the Foundation identity:
-- Deep navy: #112B3A
-- Primary teal: #176E66
-- Teal highlight: #1B8278
-- Light background: #F3F7F7
-- Dark background: #0C171D
-- Main text: #14242E
-- Dark-theme text: #E0E9EA
+- Deep green: #12372A
+- Primary green: #1F7A58
+- Gold accent: #D9B45A
+- Light background: #F4F7F3
+- Dark background: #0D1913
+- Main text: #12372A
+- Muted text: #4A6358
 
-Use teal for primary actions and active status, neutral surfaces for cards, and error color only for Stop/error states. Reserve the hero gradient for the Home header. Do not apply gradients, heavy borders or decorative badges to every card. Express status with text/icon as well as color.
+Use deep green for primary actions, gold only for restrained emphasis, and neutral surfaces for cards. The product mark is the mihrab arch with a gold point and four fading bars; use it consistently in the app icon and header. Reserve the hero treatment for Home. Avoid gradients, heavy borders and decorative badges on every card. Express status with text/icon as well as color.
 
 ## Adaptive layout
 - Phone portrait: one column, the main action visible from Home, Settings separate, no horizontal scrolling.
