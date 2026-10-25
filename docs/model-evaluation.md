@@ -42,3 +42,35 @@ Evaluate all models on the same versioned test set and hardware:
 ## Technical direction
 
 For Android, evaluate the current LiteRT \`CompiledModel\` API before choosing a runtime. It offers CPU/GPU/NPU execution paths, with a CPU fallback required for broad compatibility. A first native implementation should use Kotlin + CameraX, keep frames in memory, and adapt the frame rate to latency and thermal state.
+
+## Native Android research refresh (2026-10-25)
+
+This section is a source-based shortlist, not a report of completed Deku Satr benchmarks.
+
+### ML Kit Selfie Segmentation
+
+Google's Android guide lists the beta dependency as approximately 4.5 MB added to app size and documents STREAM_MODE plus raw-size masks. It reports about 25–65 ms latency on a Pixel 4 depending on image size. This is a useful small-runtime baseline to test, but it is designed for person/selfie segmentation and must be evaluated against actual full-screen app frames, including distant and small people. Beta means the API can change and carries no SLA.
+
+Source: https://developers.google.com/ml-kit/vision/selfie-segmentation/android
+
+### LiteRT runtime
+
+As of this update, Google's Android release table identifies LiteRT 2.2.0 as the latest listed CompiledModel release. The current overview recommends CompiledModel for new accelerated on-device inference; older Interpreter use remains available for compatibility. We should select a model artifact independently of the runtime and require CPU fallback where accelerators are unavailable.
+
+Sources:
+- https://developers.google.com/edge/litert/android
+- https://developers.google.com/edge/litert/overview
+
+### Model-selection gate
+
+No model should be selected based solely on benchmark numbers published for another device or selfie dataset. For the system-screen task, first compare a compact semantic person segmenter and ML Kit on the same labelled display frames. Report recall on small/distant people, boundary leakage, false-positive area, p50/p95 end-to-end latency, peak native memory, sustained frame rate, heat, battery impact, and total distribution size. Review model and training-data licenses before packaging weights.
+
+### Screen capture is a separate engineering risk
+
+The native foundation currently establishes the consent-bound MediaProjection session and visible overlay; it does not read pixels or run a model. Before measuring inference, test whether the app's own overlay is included in subsequent MediaProjection frames. A feedback loop can reprocess the previously blurred overlay and produce ghosting or unstable masks. If this cannot be controlled reliably on a target device, that device must be marked unsupported rather than advertised as protected.
+
+Official platform references:
+- https://developer.android.com/media/grow/media-projection
+- https://developer.android.com/about/versions/14/behavior-changes-14
+- https://developer.android.com/about/versions/15/behavior-changes-15
+- https://developer.android.com/reference/android/view/WindowManager.LayoutParams
