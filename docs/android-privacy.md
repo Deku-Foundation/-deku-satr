@@ -32,3 +32,12 @@ After the user grants MediaProjection, screen frames are received through an Ima
 MediaProjection requires explicit user consent for each session and can be stopped by Android. FLAG_SECURE windows, DRM video, and other protected surfaces may be blacked out or unavailable to capture. The current model can miss people, particularly small or distant people in screenshots. The filter overlay may appear in subsequent projection frames depending on Android version and device vendor; temporal feedback still requires physical testing.
 
 This is an experimental local filter, not a guaranteed safety barrier.
+
+
+## Android 12+ touch pass-through opacity
+
+Android treats TYPE_APPLICATION_OVERLAY windows as untrusted for pass-through touch. The platform documents a maximum combined obscuring opacity of 0.8. The normal full-screen filter window therefore uses alpha 0.8 so taps can reach the underlying app outside the stop panel. This is a deliberate tradeoff: about 20% of the underlying image may remain mixed with the blurred mask. Strong blur reduces detail but does not eliminate this residual signal. It must not be presented as a complete concealment guarantee.
+
+If capture/inference fails, the filter layer switches to alpha 1.0 and draws an opaque cover. That can block touches to the underlying app until the user taps the always-on-top Stop control. The control panel is a separate window added after the filter surface so it remains above the cover.
+
+Source: https://developer.android.com/reference/android/view/WindowManager.LayoutParams

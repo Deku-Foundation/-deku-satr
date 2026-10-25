@@ -37,6 +37,7 @@ A checked box means code or documentation has been added; it does not mean devic
 - [ ] Test installation and the capture/overlay composition loop on actual phones and Android versions.
 - [ ] Confirm whether the overlay re-enters MediaProjection frames and characterize any temporal feedback/ghosting.
 - [ ] Handle rotation/display-size changes and system UI/window insets throughout the session.
+- [x] Cap normal filter overlay opacity to Android's 0.8 pass-through limit and switch to opaque cover only in fail-closed mode.
 - [ ] Expand tests for the renderer, resource teardown, permission revocation, and stale frames.
 - [ ] Measure battery/thermal performance on low-end phones and tune the sampling interval.
 - [ ] Publish a tested device/OS matrix; mark unsupported or secure surfaces visibly.

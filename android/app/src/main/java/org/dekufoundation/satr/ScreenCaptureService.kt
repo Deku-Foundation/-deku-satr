@@ -347,32 +347,52 @@ class ScreenCaptureService : Service() {
 
     private fun imageToBitmap(image: Image): Bitmap {
         require(image.planes.isNotEmpty()) { "Captured frame has no pixel plane." }
+        val width = image.width
+        val height = image.height
+        val pixelCountLong = width.toLong() * height.toLong()
+        require(
+            width > 0 &&
+                height > 0 &&
+                pixelCountLong in 1..MAX_FRAME_PIXELS.toLong(),
+        ) { "Captured frame dimensions are outside the processing budget." }
+
         val plane = image.planes[0]
-        require(plane.pixelStride >= 4 && plane.rowStride > 0) {
+        val pixelStride = plane.pixelStride
+        val rowStride = plane.rowStride
+        require(pixelStride >= 4 && rowStride > 0) {
             "Unexpected pixel layout."
         }
-        val paddedWidth = plane.rowStride / plane.pixelStride
-        require(paddedWidth >= image.width) { "Captured row is shorter than the frame." }
+        val buffer = plane.buffer
+        val finalByteExclusive =
+            (height - 1L) * rowStride + (width - 1L) * pixelStride + 4L
+        require(finalByteExclusive <= buffer.limit().toLong()) {
+            "Captured frame buffer is incomplete."
+        }
 
-        val padded = Bitmap.createBitmap(
-            paddedWidth,
-            image.height,
-            Bitmap.Config.ARGB_8888,
-        )
-        return try {
-            val buffer = plane.buffer
-            buffer.rewind()
-            padded.copyPixelsFromBuffer(buffer)
-            if (paddedWidth == image.width) {
-                padded
-            } else {
-                Bitmap.createBitmap(padded, 0, 0, image.width, image.height).also {
-                    padded.recycle()
-                }
+        // PixelFormat.RGBA_8888 is read byte-by-byte and converted into Android ARGB ints.
+        // This avoids depending on platform-native Bitmap byte order or row-padding assumptions.
+        val pixels = IntArray(pixelCountLong.toInt())
+        for (y in 0 until height) {
+            val rowOffset = y * rowStride
+            val pixelRowOffset = y * width
+            for (x in 0 until width) {
+                val offset = rowOffset + x * pixelStride
+                val red = buffer.get(offset).toInt() and 0xFF
+                val green = buffer.get(offset + 1).toInt() and 0xFF
+                val blue = buffer.get(offset + 2).toInt() and 0xFF
+                val alpha = buffer.get(offset + 3).toInt() and 0xFF
+                pixels[pixelRowOffset + x] =
+                    (alpha shl 24) or (red shl 16) or (green shl 8) or blue
             }
-        } catch (error: Exception) {
-            padded.recycle()
-            throw error
+        }
+
+        return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap ->
+            try {
+                bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+            } catch (error: Exception) {
+                bitmap.recycle()
+                throw error
+            }
         }
     }
 
@@ -568,6 +588,7 @@ class ScreenCaptureService : Service() {
         private const val STALE_FRAME_LIMIT_MS = 1_500L
         private const val WATCHDOG_INTERVAL_MS = 500L
         private const val MAX_MASK_PIXELS = 2_000_000
+        private const val MAX_FRAME_PIXELS = 500_000
         private const val MIN_PERSON_COVERAGE_PERCENT = 1
     }
 }

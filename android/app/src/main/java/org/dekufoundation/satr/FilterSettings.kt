@@ -2,7 +2,7 @@ package org.dekufoundation.satr
 
 object FilterSettings {
     @Volatile
-    var blurRadius: Int = 8
+    var blurRadius: Int = 16
         set(value) {
             field = value.coerceIn(MIN_BLUR_RADIUS, MAX_BLUR_RADIUS)
         }

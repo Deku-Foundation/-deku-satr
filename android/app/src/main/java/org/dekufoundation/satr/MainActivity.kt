@@ -860,6 +860,12 @@ private fun SafetyCard() {
                 color = Color(0xFF613E00),
                 lineHeight = 22.sp,
             )
+            Text(
+                "لتمرير اللمس في Android 12 وما بعده، تكون طبقة التمويه العادية بعتامة 80%؛ قد يبقى أثر من الصورة الأصلية. عند فشل التحليل، تصبح التغطية معتمة بالكامل وقد تمنع لمس التطبيق أسفلها حتى تضغط إيقاف.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF613E00),
+                lineHeight = 20.sp,
+            )
         }
     }
 }

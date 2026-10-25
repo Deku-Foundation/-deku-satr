@@ -63,3 +63,10 @@ Install JDK 17, Gradle 8.13, Android SDK Platform 36 and accept the SDK licenses
     gradle --no-daemon -p android testDebugUnitTest assembleDebug
 
 GitHub Actions uploads android/app/build/outputs/apk/debug/app-debug.apk as a development artifact; it is not production-signed.
+
+
+## Touch handling and opacity
+
+The filter surface is a full-screen, non-touchable application overlay. Android 12+ blocks touches passing through untrusted overlays when the window's combined obscuring opacity exceeds 0.8. The normal filter layer now uses 0.8 alpha to preserve tap pass-through outside the controls. That also means the result is composited over the original screen with some residual original signal, so this is a visual blur experiment rather than guaranteed concealment. If a frame cannot be processed, the layer changes to fully opaque fail-closed mode; the user must use the visible stop panel to resume interaction with the underlying app.
+
+Source: https://developer.android.com/reference/android/view/WindowManager.LayoutParams

@@ -27,6 +27,7 @@ class OverlayController(
     private val windowManager = appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val mainHandler = Handler(Looper.getMainLooper())
     private var filterView: FilterSurfaceView? = null
+    private var filterParams: WindowManager.LayoutParams? = null
     private var controlPanel: LinearLayout? = null
     private var controlTitle: TextView? = null
     private var controlDetail: TextView? = null
@@ -48,12 +49,14 @@ class OverlayController(
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
+            alpha = NORMAL_FILTER_ALPHA
             title = "Deku Satr privacy mask"
         }
 
         return try {
             windowManager.addView(filter, filterParams)
             filterView = filter
+            this.filterParams = filterParams
             addControlPanel()
             true
         } catch (_: SecurityException) {
@@ -73,11 +76,13 @@ class OverlayController(
                 return@post
             }
             currentView.showMask(bitmap)
+            setFilterWindowAlpha(NORMAL_FILTER_ALPHA)
         }
     }
 
     fun showFailClosed(detail: String) {
         mainHandler.post {
+            setFilterWindowAlpha(FAIL_CLOSED_ALPHA)
             filterView?.showFailClosed()
             controlTitle?.text = "دِكو سَتر · إخفاء احتياطي"
             controlDetail?.text = detail.take(120)
@@ -132,6 +137,7 @@ class OverlayController(
             } finally {
                 controlPanel = null
                 filterView = null
+                filterParams = null
                 controlTitle = null
                 controlDetail = null
                 controlButton = null
@@ -249,6 +255,27 @@ class OverlayController(
             }
             return false
         }
+    }
+
+    private fun setFilterWindowAlpha(alpha: Float) {
+        val filter = filterView ?: return
+        val params = filterParams ?: return
+        if (params.alpha == alpha) return
+        params.alpha = alpha
+        try {
+            windowManager.updateViewLayout(filter, params)
+        } catch (_: IllegalArgumentException) {
+            // The projection or overlay may already have been torn down.
+        } catch (_: WindowManager.BadTokenException) {
+            // Android may revoke overlay access while capture is active.
+        }
+    }
+
+    companion object {
+        // Android 12+ blocks untrusted touches passing through opaque app overlays.
+        // Fail-closed intentionally restores full opacity and may require the user to tap Stop.
+        private const val NORMAL_FILTER_ALPHA = 0.8f
+        private const val FAIL_CLOSED_ALPHA = 1.0f
     }
 
     private fun dp(value: Int): Int = (value * appContext.resources.displayMetrics.density).toInt()

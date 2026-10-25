@@ -14,7 +14,8 @@ Path: android/
 - Explicit overlay permission and Android MediaProjection consent for every capture session.
 - A visible media-projection foreground service, notification stop action, draggable floating stop panel, and a full-screen transparent mask layer that does not accept touches.
 - Bundled model: ML Kit Selfie Segmentation 16.0.0-beta6. The model assets are statically linked at build time; the app does not download model weights on first launch.
-- Local in-memory processing: screen frames are downscaled to a 640 px longest edge, inference is throttled, new frames are dropped while the model is busy, and masked areas are blurred with a bounded two-pass CPU blur.
+- Local in-memory processing: screen frames are downscaled to a 640 px longest edge, decoded from RGBA with explicit channel handling, inference is throttled, new frames are dropped while the model is busy, and masked areas are blurred with a bounded two-pass CPU blur.
+- Android 12+ pass-through touch requires a maximum 0.8 opacity for the normal overlay. This is a documented residual-image tradeoff; fail-closed mode is fully opaque and may block underlying touches until Stop is tapped.
 - No camera or microphone permission, no screenshot file storage, and the manifest merger is instructed to remove the INTERNET permission.
 - Unit tests for capture-size policy and confidence-mask thresholding/dilation.
 - GitHub Actions builds/tests the Android app, audits the merged manifest for the INTERNET permission, and uploads a debug APK artifact.
