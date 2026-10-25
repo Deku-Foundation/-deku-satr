@@ -200,7 +200,7 @@ class OverlayController(
             gravity = Gravity.TOP or Gravity.END
             x = dp(10)
             y = dp(106)
-            title = "Deku Satr controls"
+            this.title = "Deku Satr controls"
         }
 
         windowManager.addView(panel, params)
