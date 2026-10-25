@@ -22,13 +22,7 @@ import kotlin.math.roundToInt
  * The model's VOC-style label order assigns "person" to class 15.
  * This is semantic segmentation, not per-person instance segmentation or gender recognition.
  */
-data class PersonSegmentationMask(
-    val width: Int,
-    val height: Int,
-    val confidence: FloatArray,
-)
-
-class LrasppPersonSegmenter(context: Context) : AutoCloseable {
+class LrasppPersonSegmenter(context: Context) : PersonSegmentationEngine {
     private lateinit var interpreter: Interpreter
     private lateinit var modelFile: File
     private var usingNnapi = false
@@ -108,7 +102,7 @@ class LrasppPersonSegmenter(context: Context) : AutoCloseable {
     }
 
     @Synchronized
-    fun process(source: Bitmap, tileWideFrames: Boolean = true): PersonSegmentationMask {
+    override fun process(source: Bitmap, tileWideFrames: Boolean): PersonSegmentationMask {
         require(!source.isRecycled && source.width > 0 && source.height > 0)
         val tiles = SegmentationTilePolicy.plan(source.width, source.height, tileWideFrames)
         if (tiles.size == 1 && tiles[0].left == 0 && tiles[0].top == 0 &&
