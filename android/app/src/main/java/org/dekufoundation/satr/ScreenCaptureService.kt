@@ -454,7 +454,7 @@ class ScreenCaptureService : Service() {
                                                 rendered.coveragePercent > MIN_PERSON_COVERAGE_PERCENT ||
                                                 emptyFramesInARow >= EMPTY_FRAMES_TO_CLEAR_MASK
                                         if (shouldUpdateMask) {
-                                            activeOverlay.updateFilterFrame(rendered.overlay)
+                                            activeOverlay.updateFilterFrame(rendered.overlay, rendered.coveragePercent)
                                         } else if (!rendered.overlay.isRecycled) {
                                             rendered.overlay.recycle()
                                         }
