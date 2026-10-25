@@ -20,7 +20,7 @@ Path: android/
 - Unit tests for capture-size policy, mask confidence bounds, and persisted filter-setting ranges.
 - GitHub Actions builds/tests the Android app, audits the merged manifest for the INTERNET permission, and uploads a debug APK artifact.
 
-The live path uses a pinned semantic person mask, reusable tensor buffers, NNAPI-to-CPU fallback, short temporal smoothing, and a bounded softmax early-exit for background pixels. The low-latency profile disables tiling to reduce work per frame; it can miss people farther away. None of the profiles has a guaranteed FPS or 99% recall claim. The model returns one shared mask for all people; it does not split individuals or classify gender. Current behavior blurs all detected people. Selective targeting remains gated on a compatible instance model and explicit user selection. See Android architecture (docs/android-architecture.md), privacy notes (docs/android-privacy.md), and model evaluation (docs/model-evaluation.md).
+The live path uses a pinned semantic person mask, reusable tensor buffers and one reusable input bitmap, NNAPI-to-CPU fallback, short temporal smoothing, and a bounded softmax early-exit for background pixels. The low-latency profile disables tiling to reduce work per frame; it can miss people farther away. None of the profiles has a guaranteed FPS or 99% recall claim. The model returns one shared mask for all people; it does not split individuals or classify gender. Current behavior blurs all detected people. Selective targeting remains gated on a compatible instance model and explicit user selection. See Android architecture (docs/android-architecture.md), privacy notes (docs/android-privacy.md), and model evaluation (docs/model-evaluation.md).
 
 ## Download a development APK
 
@@ -71,11 +71,12 @@ The PWA uses Xenova/segformer-b0-finetuned-ade-512-512 through Transformers.js a
 Repository code is MIT-licensed. LiteRT/TFLite and AndroidX have their own license terms. The LR-ASPP converted model's distribution license still needs explicit verification before a release APK is published.
 
 
-## Native milestone — 0.5.3
+## Native milestone — 0.5.4
 
 - The overlay stays clear during model warm-up and explicitly reports that filtering is not active until the first valid mask. Real inference failure still activates an opaque charcoal fallback.
 - The floating panel is compact; tap its title to reveal status details, or drag it to move it. The stop target remains accessible.
 - The decoder skips full softmax only where the person probability is mathematically below the minimum supported mask threshold. Accepted pixels retain the original softmax path.
+- The live model reuses one letterbox bitmap/canvas and draws the source directly into the model input rectangle, avoiding a temporary scaled bitmap allocation per frame or tile.
 - Selective targeting by gender is not implemented. The bundled semantic model cannot separate individuals, and visual gender inference is not used. The next research gate is a license-compatible instance-mask model plus explicit user selection.
 
 ## Historical notes: version 0.4.2
