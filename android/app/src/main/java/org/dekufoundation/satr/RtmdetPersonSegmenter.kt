@@ -148,19 +148,18 @@ class RtmdetPersonSegmenter(context: Context) : PersonSegmentationEngine {
             }.sortedByDescending { it.score }.take(MAX_CANDIDATES)
 
             val accepted = mutableListOf<SegmentedPersonInstance>()
+            val acceptedAreas = mutableListOf<Int>()
             val unionMask = BooleanArray(source.width * source.height)
             val maskPlaneSize = INPUT_SIZE * INPUT_SIZE
             for (candidate in candidates) {
                 val offset = candidate.index * maskPlaneSize
-                val rawMask = FloatArray(maskPlaneSize) { maskValues.get(offset + it) }
-                val pixels = RtmdetGeometry.sampleMask(rawMask, plan)
-                rawMask.fill(0f)
+                val pixels = RtmdetGeometry.sampleMask(maskValues, offset, plan)
                 val area = pixels.count { it }
                 if (area == 0) continue
                 var duplicate = false
-                for (previous in accepted) {
-                    val previousArea = previous.pixels.count { it }
-                    val smallerArea = min(area, previousArea)
+                for (previousIndex in accepted.indices) {
+                    val previous = accepted[previousIndex]
+                    val smallerArea = min(area, acceptedAreas[previousIndex])
                     if (smallerArea == 0) continue
                     var intersection = 0
                     for (index in pixels.indices) {
@@ -176,6 +175,7 @@ class RtmdetPersonSegmenter(context: Context) : PersonSegmentationEngine {
                     continue
                 }
                 accepted += SegmentedPersonInstance(candidate.box, candidate.score, pixels)
+                acceptedAreas += area
                 for (index in pixels.indices) if (pixels[index]) unionMask[index] = true
                 if (accepted.size >= MAX_PERSON_INSTANCES) break
             }
