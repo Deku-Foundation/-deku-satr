@@ -33,6 +33,14 @@ class FilterSettingsTest {
     }
 
     @Test
+    fun personModelProfileCanBeSwitched() {
+        FilterSettings.personModelProfile = PersonModelProfile.RTMDET_INS_S
+        assertEquals(PersonModelProfile.RTMDET_INS_S, FilterSettings.personModelProfile)
+        FilterSettings.resetToDefaults()
+        assertEquals(PersonModelProfile.FAST_SEMANTIC, FilterSettings.personModelProfile)
+    }
+
+    @Test
     fun processingProfileCanBeChangedAndReset() {
         FilterSettings.processingProfile = ProcessingProfile.DETAIL
         assertEquals(720, FilterSettings.processingProfile.maxEdge)
