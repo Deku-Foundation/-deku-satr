@@ -82,3 +82,18 @@ Source: https://developer.android.com/media/grow/media-projection
 
 
 On Android 8–13, where `MediaProjection.Callback.onCapturedContentResize()` is not available, a `DisplayManager.DisplayListener` watches the default display and asks the service to resize the existing virtual display and replace the ImageReader surface. The listener is unregistered during service teardown. Both pathways invalidate older inference generations to avoid painting a mask based on the previous orientation.
+
+
+## Adaptive layout and accessibility
+
+The dashboard is centered and constrained to a maximum content width of 680 dp so cards remain readable on tablets, foldables, and desktop/freeform windows instead of stretching across the entire display. On narrow phones it continues to fill the available width and scroll vertically. The floating Stop control has a minimum 48 dp height and 112 dp width so the emergency action remains easier to tap.
+
+The main screen uses Compose Material 3 components and system light/dark theme selection. Before a production release, verify TalkBack labels and focus order, large font scaling, contrast, RTL layout, keyboard/mouse interaction, landscape, split-screen, and foldable posture on physical or virtual devices. A UI build passing does not replace these checks.
+
+Official guidance:
+- Compose accessibility defaults and 48 dp minimum touch targets: https://developer.android.com/develop/ui/compose/accessibility/api-defaults
+- Compose semantics for screen readers and testing: https://developer.android.com/develop/ui/compose/accessibility/semantics
+- Adaptive app layouts and window size classes: https://developer.android.com/develop/adaptive-apps/guides/get-started-with-adaptive-apps
+- Material 3 release notes: https://developer.android.com/jetpack/androidx/releases/compose-material3
+
+The dashboard's width constraint is a deliberate first adaptive step, not a claim that the app already has a complete multi-pane tablet layout.
