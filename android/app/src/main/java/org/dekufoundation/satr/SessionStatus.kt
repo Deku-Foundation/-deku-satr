@@ -20,7 +20,7 @@ data class SatrSessionSnapshot(
     val maskCoveragePercent: Int? = null,
     val modelReady: Boolean = false,
     val detectedPeople: List<TrackedPersonBox> = emptyList(),
-    val personModelProfile: PersonModelProfile = PersonModelProfile.FAST_SEMANTIC,
+    val personModelProfile: PersonModelProfile = PersonModelProfile.RTMDET_INS_TINY,
     val personTargetMode: PersonTargetMode = PersonTargetMode.MASK_ALL,
     val selectedTrackIds: Set<Long> = emptySet(),
 )
