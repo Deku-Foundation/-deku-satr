@@ -1097,6 +1097,7 @@ private fun PersonTargetControls(
     onUpdatePresentation: (Long, PersonPresentation?) -> Unit,
 ) {
     val selected = snapshot.selectedTrackIds
+    val sessionActive = snapshot.phase in setOf(SatrPhase.STARTING, SatrPhase.FILTERING, SatrPhase.NO_PERSON_DETECTED, SatrPhase.FAIL_CLOSED)
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
@@ -1115,18 +1116,24 @@ private fun PersonTargetControls(
                 container = MaterialTheme.colorScheme.primaryContainer,
                 foreground = MaterialTheme.colorScheme.onPrimaryContainer,
             )
-            Text("ابدأ جلسة باستخدام RTMDet-Ins-Tiny لتظهر الأشخاص المكتشفون. حدّد من تريد طمسه أو استثناؤه؛ يتغير القناع في الجلسة الحالية فقط.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 21.sp)
+            Text(
+                if (sessionActive) "اختر سياسة الطمس. في وضع الرجال/النساء يلزم وجه واضح وثقتان متتاليتان؛ الوجوه غير المعروفة تبقى مطموسة."
+                else "ابدأ جلسة الحماية أولاً؛ تظهر هنا الأشخاص المكتشفون ثم يمكنك تحديدهم أو تصحيح تصنيف الوجه لهذه الجلسة.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                lineHeight = 21.sp,
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(onClick = { onUpdateTarget(PersonTargetMode.MASK_ALL, emptySet()) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("طمس الجميع") }
+                OutlinedButton(onClick = { onUpdateTarget(PersonTargetMode.MASK_ALL, emptySet()) }, enabled = sessionActive, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("طمس الجميع") }
                 OutlinedButton(
                     onClick = { if (selected.isNotEmpty()) onUpdateTarget(PersonTargetMode.MASK_SELECTED_ONLY, selected) },
-                    enabled = selected.isNotEmpty(),
+                    enabled = sessionActive && selected.isNotEmpty(),
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                 ) { Text("طمس المحدد") }
             }
             OutlinedButton(
                 onClick = { onUpdateTarget(PersonTargetMode.MASK_ALL_EXCEPT_SELECTED, selected) },
-                enabled = selected.isNotEmpty(),
+                enabled = sessionActive && selected.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             ) { Text("طمس الجميع عدا المحدد") }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -1140,10 +1147,12 @@ private fun PersonTargetControls(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(
                     onClick = { onUpdateTarget(PersonTargetMode.SHOW_MALE_PRESENTING_ONLY, emptySet()) },
+                    enabled = sessionActive,
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                 ) { Text("إبقاء الرجال ظاهرين") }
                 OutlinedButton(
                     onClick = { onUpdateTarget(PersonTargetMode.SHOW_FEMALE_PRESENTING_ONLY, emptySet()) },
+                    enabled = sessionActive,
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                 ) { Text("إبقاء النساء ظاهرات") }
             }
@@ -1176,27 +1185,31 @@ private fun PersonTargetControls(
                                     val nextMode = if (snapshot.personTargetMode == PersonTargetMode.MASK_SELECTED_ONLY && updated.isEmpty()) PersonTargetMode.MASK_ALL else snapshot.personTargetMode
                                     onUpdateTarget(nextMode, updated)
                                 },
+                                enabled = sessionActive,
                                 modifier = Modifier.heightIn(min = 48.dp),
                             ) { Text(if (isSelected) "إلغاء التحديد" else "تحديد") }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                             OutlinedButton(
                                 onClick = { onUpdatePresentation(person.trackId, PersonPresentation.MALE_PRESENTING) },
+                                enabled = sessionActive,
                                 modifier = Modifier.weight(1f).heightIn(min = 44.dp),
                             ) { Text("تصحيح: رجل", maxLines = 1) }
                             OutlinedButton(
                                 onClick = { onUpdatePresentation(person.trackId, PersonPresentation.FEMALE_PRESENTING) },
+                                enabled = sessionActive,
                                 modifier = Modifier.weight(1f).heightIn(min = 44.dp),
                             ) { Text("تصحيح: امرأة", maxLines = 1) }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                             OutlinedButton(
                                 onClick = { onUpdatePresentation(person.trackId, PersonPresentation.UNKNOWN) },
+                                enabled = sessionActive,
                                 modifier = Modifier.weight(1f).heightIn(min = 44.dp),
                             ) { Text("غير معروف", maxLines = 1) }
                             OutlinedButton(
                                 onClick = { onUpdatePresentation(person.trackId, null) },
-                                enabled = person.trackId in snapshot.presentationOverrides,
+                                enabled = sessionActive && person.trackId in snapshot.presentationOverrides,
                                 modifier = Modifier.weight(1f).heightIn(min = 44.dp),
                             ) { Text("إزالة التصحيح", maxLines = 1) }
                         }
