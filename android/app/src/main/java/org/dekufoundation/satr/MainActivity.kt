@@ -486,8 +486,6 @@ private fun SatrDashboard(
  var maskExpansion by rememberSaveable { mutableFloatStateOf(FilterSettings.maskExpansionRadius.toFloat()) }
  var effectName by rememberSaveable { mutableStateOf(FilterSettings.effect.name) }
  var profileName by rememberSaveable { mutableStateOf(FilterSettings.processingProfile.name) }
- var modelProfileName by rememberSaveable { mutableStateOf(FilterSettings.personModelProfile.name) }
- val modelProfile=runCatching { PersonModelProfile.valueOf(modelProfileName) }.getOrDefault(PersonModelProfile.RTMDET_INS_TINY)
  val effect=runCatching { PrivacyEffect.valueOf(effectName) }.getOrDefault(PrivacyEffect.BLUR)
  val profile=runCatching { ProcessingProfile.valueOf(profileName) }.getOrDefault(ProcessingProfile.BALANCED)
  val scrollState=rememberScrollState()
@@ -526,20 +524,20 @@ private fun SatrDashboard(
         OutlinedButton(onClick=onSaveImage,enabled=processedImage!=null&&!mediaBusy,modifier=Modifier.weight(1f).heightIn(min=52.dp),shape=RoundedCornerShape(16.dp)){Text("حفظ نسخة")}
        }
        FilterSettingsCard(effect,{effectName=it.name;FilterSettings.effect=it;onSaveFilterSettings()},blurStrength,{blurStrength=it;FilterSettings.blurStrengthPercent=it.roundToInt()},confidenceThreshold,{confidenceThreshold=it;FilterSettings.confidenceThreshold=it},maskExpansion,{maskExpansion=it;FilterSettings.maskExpansionRadius=it.roundToInt()},onSaveFilterSettings){
-        FilterSettings.resetToDefaults();blurStrength=FilterSettings.blurStrengthPercent.toFloat();confidenceThreshold=FilterSettings.confidenceThreshold;maskExpansion=FilterSettings.maskExpansionRadius.toFloat();effectName=FilterSettings.effect.name;profileName=FilterSettings.processingProfile.name;modelProfileName=FilterSettings.personModelProfile.name;onSaveFilterSettings()
+        FilterSettings.resetToDefaults();blurStrength=FilterSettings.blurStrengthPercent.toFloat();confidenceThreshold=FilterSettings.confidenceThreshold;maskExpansion=FilterSettings.maskExpansionRadius.toFloat();effectName=FilterSettings.effect.name;profileName=FilterSettings.processingProfile.name;onSaveFilterSettings()
        }
       }
       else -> {
        Text("الإعدادات",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
        Text("اختر التوازن بين سرعة المعالجة وتفاصيل القناع. حجم الالتقاط يُطبّق عند بدء جلسة جديدة.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
        ProcessingProfileCard(profile){profileName=it.name;FilterSettings.processingProfile=it;onSaveFilterSettings()}
-       PersonModelCard(modelProfile){ modelProfileName=it.name; FilterSettings.personModelProfile=it; onSaveFilterSettings() }
+        PersonModelCard()
        PersonTargetControls(snapshot, onUpdateTarget)
        FilterSettingsCard(effect,{effectName=it.name;FilterSettings.effect=it;onSaveFilterSettings()},blurStrength,{blurStrength=it;FilterSettings.blurStrengthPercent=it.roundToInt()},confidenceThreshold,{confidenceThreshold=it;FilterSettings.confidenceThreshold=it},maskExpansion,{maskExpansion=it;FilterSettings.maskExpansionRadius=it.roundToInt()},onSaveFilterSettings){
-        FilterSettings.resetToDefaults();blurStrength=FilterSettings.blurStrengthPercent.toFloat();confidenceThreshold=FilterSettings.confidenceThreshold;maskExpansion=FilterSettings.maskExpansionRadius.toFloat();effectName=FilterSettings.effect.name;profileName=FilterSettings.processingProfile.name;modelProfileName=FilterSettings.personModelProfile.name;onSaveFilterSettings()
+        FilterSettings.resetToDefaults();blurStrength=FilterSettings.blurStrengthPercent.toFloat();confidenceThreshold=FilterSettings.confidenceThreshold;maskExpansion=FilterSettings.maskExpansionRadius.toFloat();effectName=FilterSettings.effect.name;profileName=FilterSettings.processingProfile.name;onSaveFilterSettings()
        }
        PermissionsCard(overlayAllowed,notificationsAllowed,onGrantOverlay,onOpenNotificationSettings)
-       ModelCard(snapshot, modelProfile);SafetyCard();HowItWorksCard()
+       ModelCard(snapshot);SafetyCard();HowItWorksCard()
       }
      }
      Text("ستر بلور · SATR BLUR · من Deku Foundation · إصدار تجريبي 0.6.2",modifier=Modifier.fillMaxWidth().padding(top=4.dp),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,textAlign=TextAlign.Center)
@@ -1057,7 +1055,7 @@ private fun FilterSettingsCard(
 }
 
 @Composable
-private fun PersonModelCard(profile: PersonModelProfile, onChange: (PersonModelProfile) -> Unit) {
+private fun PersonModelCard() {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
@@ -1066,14 +1064,14 @@ private fun PersonModelCard(profile: PersonModelProfile, onChange: (PersonModelP
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("نموذج الرصد", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(
-                "المحرك النشط: RTMDet-Ins-Tiny · 24.03 MB. يعطي قناعاً منفصلاً لكل شخص ويعمل محلياً على الهاتف.",
+                "النموذج الأساسي: RTMDet-Ins-Tiny (24.03 MB). يولّد قناعاً مستقلاً لكل شخص ويعمل على الجهاز.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 lineHeight = 21.sp,
             )
             StatusPill("RTMDet-Tiny محدد", MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
             Text(
-                "يُحمّل عند بدء الجلسة لا عند فتح الإعدادات. يستخدم مسار CPU المتوافق بدلاً من محاولة تشغيل NNAPI التي قد تفشل على بعض الأجهزة.",
+                "لا يُحمّل عند فتح الإعدادات؛ يبدأ تحميله داخل خدمة الجلسة. يستخدم مسار CPU الموثوق بدلاً من NNAPI، ويعرض خطأً واضحاً إذا تعذّر التحميل.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 lineHeight = 20.sp,
@@ -1244,7 +1242,7 @@ private fun PermissionLine(
 }
 
 @Composable
-private fun ModelCard(snapshot: SatrSessionSnapshot, profile: PersonModelProfile) {
+private fun ModelCard(snapshot: SatrSessionSnapshot) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
