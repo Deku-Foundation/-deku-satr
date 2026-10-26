@@ -36,7 +36,7 @@ class ScreenCaptureService : Service() {
     private var captureHandler: Handler? = null
     private var overlayController: OverlayController? = null
     @Volatile private var segmenter: PersonSegmentationEngine? = null
-    @Volatile private var activePersonModelProfile: PersonModelProfile = PersonModelProfile.FAST_SEMANTIC
+    @Volatile private var activePersonModelProfile: PersonModelProfile = PersonModelProfile.RTMDET_INS_TINY
     private val personTrackAssociator = PersonTrackAssociator()
     private var lastTargetMode = PersonTargetMode.MASK_ALL
     private var lastSelectedTrackIds: Set<Long> = emptySet()
@@ -170,7 +170,7 @@ class ScreenCaptureService : Service() {
     }
 
     private fun applyTargetUpdate(command: Intent?) {
-        if (projection == null || stopping || activePersonModelProfile != PersonModelProfile.RTMDET_INS_S) {
+        if (projection == null || stopping || activePersonModelProfile != PersonModelProfile.RTMDET_INS_TINY) {
             FilterSettings.personTargetMode = PersonTargetMode.MASK_ALL
             FilterSettings.selectedPersonTrackIds = emptySet()
             SessionStatus.update { current ->
@@ -265,10 +265,7 @@ class ScreenCaptureService : Service() {
             ?: throw IllegalStateException("The inference executor could not be created.")
         modelExecutor.execute {
             try {
-                val loadedModel: PersonSegmentationEngine = when (activePersonModelProfile) {
-                    PersonModelProfile.FAST_SEMANTIC -> LrasppPersonSegmenter(applicationContext)
-                    PersonModelProfile.RTMDET_INS_S -> RtmdetPersonSegmenter(applicationContext)
-                }
+                val loadedModel: PersonSegmentationEngine = RtmdetPersonSegmenter(applicationContext)
                 synchronized(this) {
                     if (stopping) loadedModel.close() else segmenter = loadedModel
                 }
@@ -461,13 +458,13 @@ class ScreenCaptureService : Service() {
                             temporalMaskSmoother.reset()
                         }
                     }
-                    val detectedPeople = if (activePersonModelProfile == PersonModelProfile.RTMDET_INS_S) {
+                    val detectedPeople = if (activePersonModelProfile == PersonModelProfile.RTMDET_INS_TINY) {
                         personTrackAssociator.update(
                             mask.instances.map { PersonBoxDetection(it.box, it.confidence) },
                             frameNow,
                         )
                     } else emptyList()
-                    val freshValues = if (activePersonModelProfile == PersonModelProfile.RTMDET_INS_S) {
+                    val freshValues = if (activePersonModelProfile == PersonModelProfile.RTMDET_INS_TINY) {
                         val instanceMasks = mask.instances.zip(detectedPeople).map { (instance, tracked) ->
                             PersonInstanceMask(tracked.trackId, mask.width, mask.height, instance.pixels, instance.confidence)
                         }
@@ -562,7 +559,7 @@ class ScreenCaptureService : Service() {
                             val next = previous.copy(
                                 phase = if (detected) SatrPhase.FILTERING else SatrPhase.NO_PERSON_DETECTED,
                                 detail = if (detected) {
-                                    if (activePersonModelProfile == PersonModelProfile.RTMDET_INS_S) {
+                                    if (activePersonModelProfile == PersonModelProfile.RTMDET_INS_TINY) {
                                         "يُطبّق التمويه على الأشخاص المكتشفين وفق اختيارك اليدوي."
                                     } else {
                                         "يُطبّق التمويه على قناع الأشخاص الذي ينتجه النموذج الخفيف."
