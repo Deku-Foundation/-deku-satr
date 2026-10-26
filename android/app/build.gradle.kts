@@ -9,6 +9,22 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+
+// Stable, development-only signer lets successive CI debug APKs update in place.
+// Never use this public key for a production/release build.
+val stableDebugKeystore = layout.buildDirectory.file("signing/satr-dev-debug.keystore")
+val prepareStableDebugKeystore by tasks.registering {
+    val encodedKey = layout.projectDirectory.file("ci-signing/satr-dev-debug.keystore.b64").asFile
+    inputs.file(encodedKey)
+    outputs.file(stableDebugKeystore)
+    doLast {
+        val output = stableDebugKeystore.get().asFile
+        output.parentFile.mkdirs()
+        val encoded = encodedKey.readText().filterNot(Char::isWhitespace)
+        output.writeBytes(java.util.Base64.getDecoder().decode(encoded))
+    }
+}
+
 android {
     namespace = "org.dekufoundation.satr"
     compileSdk = 36
@@ -22,7 +38,20 @@ android {
         testInstrumentationRunner = "android.test.InstrumentationTestRunner"
     }
 
+    signingConfigs {
+        create("stableDev") {
+            storeFile = stableDebugKeystore.get().asFile
+            storeType = "JKS"
+            storePassword = "satr-dev-only-2026"
+            keyAlias = "satr-debug"
+            keyPassword = "satr-dev-only-2026"
+        }
+    }
+
     buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("stableDev")
+        }
         release {
             // Keep shrinking off until a signed release build is independently verified.
             isMinifyEnabled = false
@@ -100,7 +129,10 @@ val downloadLrasppModel by tasks.registering {
         }
     }
 }
-tasks.named("preBuild").configure { dependsOn(downloadLrasppModel) }
+tasks.named("preBuild").configure {
+    dependsOn(downloadLrasppModel)
+    dependsOn(prepareStableDebugKeystore)
+}
 
 val rtmdetAssetsDirectory = layout.buildDirectory.dir("generated/rtmdetAssets")
 android.sourceSets.getByName("main").assets.srcDir(rtmdetAssetsDirectory.get().asFile)
