@@ -103,6 +103,7 @@ class MainActivity : ComponentActivity() {
     private var mediaBusy by mutableStateOf(false)
     private var mediaMessage by mutableStateOf("اختر صورة لتحليلها محلياً.")
     private var mediaCoverage by mutableIntStateOf(0)
+    private var stillImageTargetMode by mutableStateOf(PersonTargetMode.MASK_ALL)
     private var pendingExportBitmap: Bitmap? = null
     private val mediaExecutor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "SatrMediaProcessor").apply { isDaemon = true } }
     private var unsubscribeStatus: (() -> Unit)? = null
@@ -169,10 +170,13 @@ class MainActivity : ComponentActivity() {
                         onStart = ::beginCaptureFlow,
                         onStop = ::requestStop,
                         onUpdateTarget = ::updatePersonTarget,
+                        onUpdatePresentation = ::updatePersonPresentation,
                         processedImage = processedImage,
                         mediaBusy = mediaBusy,
                         mediaMessage = mediaMessage,
                         mediaCoverage = mediaCoverage,
+                        stillImageTargetMode = stillImageTargetMode,
+                        onStillImageTargetModeChange = { stillImageTargetMode = it },
                         onPickImage = ::pickImage,
                         onSaveImage = ::saveProcessedImage,
                         showWelcome = showWelcome,
@@ -259,18 +263,39 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun processPickedImage(uri: Uri) {
+        if (snapshot.phase in setOf(SatrPhase.STARTING, SatrPhase.FILTERING, SatrPhase.NO_PERSON_DETECTED, SatrPhase.FAIL_CLOSED)) {
+            mediaMessage = "أوقف جلسة حماية الشاشة قبل تحرير صورة؛ لا نشغّل محركي رؤية كبيرين معاً حتى لا ينفد RAM."
+            return
+        }
         mediaBusy = true
         mediaMessage = "يجري تحليل الصورة على الهاتف…"
         mediaExecutor.execute {
-            val result = runCatching { ImagePrivacyProcessor.process(this, uri, FilterSettings.effect, FilterSettings.blurRadius, FilterSettings.confidenceThreshold, FilterSettings.maskExpansionRadius) }
+            val result = runCatching {
+                ImagePrivacyProcessor.process(
+                    context = this,
+                    uri = uri,
+                    effect = FilterSettings.effect,
+                    blurRadius = FilterSettings.blurRadius,
+                    threshold = FilterSettings.confidenceThreshold,
+                    maskExpansionRadius = FilterSettings.maskExpansionRadius,
+                    targetMode = stillImageTargetMode,
+                )
+            }
             runOnUiThread {
                 mediaBusy = false
                 result.onSuccess { output ->
                     val previous = processedImage
                     processedImage = output.bitmap
                     mediaCoverage = output.coveragePercent
-                    mediaMessage = if (output.coveragePercent > 0) "اكتمل الفحص محلياً. راجع الحواف قبل مشاركة الصورة." else "لم يرصد النموذج شخصاً بوضوح؛ قد تكون الصورة غير مغطاة بالكامل."
-                    if (previous != null && previous !== output.bitmap) uiHandler.postDelayed({ if (processedImage !== previous && !previous.isRecycled) previous.recycle() }, 700L)
+                    mediaMessage = when {
+                        output.usedFailClosedFallback -> "لم تتوفر معلومات كافية لتصنيف الوجوه؛ استُخدمت سياسة طمس محافظة. راجع الصورة قبل مشاركتها."
+                        output.targetModeApplied.requiresGenderPresentation() -> "اكتمل الفحص محلياً. طُمست الوجوه غير الواضحة أو منخفضة الثقة؛ راجع الحواف قبل المشاركة."
+                        output.coveragePercent > 0 -> "اكتمل الفحص محلياً. راجع الحواف قبل مشاركة الصورة."
+                        else -> "لم يرصد النموذج شخصاً بوضوح؛ قد تكون الصورة غير مغطاة بالكامل."
+                    }
+                    if (previous != null && previous !== output.bitmap) {
+                        uiHandler.postDelayed({ if (processedImage !== previous && !previous.isRecycled) previous.recycle() }, 700L)
+                    }
                 }.onFailure { mediaMessage = "تعذر تحليل الصورة. جرّب صورة أوضح؛ لم يُعدّل الملف الأصلي." }
             }
         }
@@ -288,6 +313,14 @@ class MainActivity : ComponentActivity() {
             action = ScreenCaptureService.ACTION_UPDATE_TARGETS
             putExtra(ScreenCaptureService.EXTRA_TARGET_MODE, safeMode.name)
             putExtra(ScreenCaptureService.EXTRA_SELECTED_TRACK_IDS, selectedIds.joinToString(","))
+        })
+    }
+
+    private fun updatePersonPresentation(trackId: Long, presentation: PersonPresentation?) {
+        startService(Intent(this, ScreenCaptureService::class.java).apply {
+            action = ScreenCaptureService.ACTION_UPDATE_PRESENTATION
+            putExtra(ScreenCaptureService.EXTRA_PRESENTATION_TRACK_ID, trackId)
+            putExtra(ScreenCaptureService.EXTRA_PRESENTATION_VALUE, presentation?.name.orEmpty())
         })
     }
 
@@ -475,8 +508,10 @@ private fun SatrDashboard(
  snapshot:SatrSessionSnapshot, overlayAllowed:Boolean, notificationsAllowed:Boolean,
  onGrantOverlay:()->Unit, onOpenNotificationSettings:()->Unit, onSaveFilterSettings:()->Unit,
  onStart:()->Unit, onStop:()->Unit, onUpdateTarget:(PersonTargetMode, Set<Long>)->Unit,
+ onUpdatePresentation:(Long, PersonPresentation?)->Unit,
  processedImage:Bitmap?, mediaBusy:Boolean, mediaMessage:String,
- mediaCoverage:Int, onPickImage:()->Unit, onSaveImage:()->Unit,
+ mediaCoverage:Int, stillImageTargetMode:PersonTargetMode, onStillImageTargetModeChange:(PersonTargetMode)->Unit,
+ onPickImage:()->Unit, onSaveImage:()->Unit,
  showWelcome:Boolean, onWelcomeDone:()->Unit, onOpenSource:()->Unit,
 ) {
  val running=snapshot.phase in setOf(SatrPhase.STARTING,SatrPhase.FILTERING,SatrPhase.NO_PERSON_DETECTED,SatrPhase.FAIL_CLOSED)
@@ -510,7 +545,9 @@ private fun SatrDashboard(
        Text("المعرض",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
        Text("افحص صورة تختارها بنفسك. المعالجة محلية ولا تستبدل الملف الأصلي.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
        MediaPreviewCard(processedImage,mediaBusy,mediaMessage,mediaCoverage)
-       Button(onClick=onPickImage,modifier=Modifier.fillMaxWidth().heightIn(min=52.dp),shape=RoundedCornerShape(16.dp)){Text("اختيار صورة")}
+        ImageTargetModeCard(stillImageTargetMode, onStillImageTargetModeChange)
+        if (running) Text("أوقف جلسة حماية الشاشة قبل تحرير صورة لتجنّب تشغيل نموذجَي رؤية في الوقت نفسه.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+       Button(onClick=onPickImage,enabled=!running&&!mediaBusy,modifier=Modifier.fillMaxWidth().heightIn(min=52.dp),shape=RoundedCornerShape(16.dp)){Text("اختيار صورة")}
        OutlinedButton(onClick={selectedTab=2},modifier=Modifier.fillMaxWidth().heightIn(min=52.dp),shape=RoundedCornerShape(16.dp)){Text("فتح المحرر")}
        OutlinedButton(onClick=onStart,modifier=Modifier.fillMaxWidth().heightIn(min=52.dp),shape=RoundedCornerShape(16.dp)){Text("حماية الفيديو والمحتوى أثناء العرض")}
        Text("تُفلتر الفيديوهات والتطبيقات الأخرى أثناء عرضها عبر جلسة حماية الشاشة. اختيار صورة هنا للتحرير المنفصل.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -519,8 +556,10 @@ private fun SatrDashboard(
        Text("المحرر",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
        Text("اختر صورة، عاين النتيجة، ثم احفظ نسخة في موقع تختاره. يبقى الأصل دون تغيير.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
        MediaPreviewCard(processedImage,mediaBusy,mediaMessage,mediaCoverage)
+        ImageTargetModeCard(stillImageTargetMode, onStillImageTargetModeChange)
+        if (running) Text("أوقف جلسة حماية الشاشة قبل تحرير صورة لتجنّب تشغيل نموذجَي رؤية في الوقت نفسه.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
        Row(horizontalArrangement=Arrangement.spacedBy(10.dp),modifier=Modifier.fillMaxWidth()){
-        Button(onClick=onPickImage,modifier=Modifier.weight(1f).heightIn(min=52.dp),shape=RoundedCornerShape(16.dp)){Text("اختيار صورة")}
+        Button(onClick=onPickImage,enabled=!running&&!mediaBusy,modifier=Modifier.weight(1f).heightIn(min=52.dp),shape=RoundedCornerShape(16.dp)){Text("اختيار صورة")}
         OutlinedButton(onClick=onSaveImage,enabled=processedImage!=null&&!mediaBusy,modifier=Modifier.weight(1f).heightIn(min=52.dp),shape=RoundedCornerShape(16.dp)){Text("حفظ نسخة")}
        }
        FilterSettingsCard(effect,{effectName=it.name;FilterSettings.effect=it;onSaveFilterSettings()},blurStrength,{blurStrength=it;FilterSettings.blurStrengthPercent=it.roundToInt()},confidenceThreshold,{confidenceThreshold=it;FilterSettings.confidenceThreshold=it},maskExpansion,{maskExpansion=it;FilterSettings.maskExpansionRadius=it.roundToInt()},onSaveFilterSettings){
@@ -532,7 +571,7 @@ private fun SatrDashboard(
        Text("اختر التوازن بين سرعة المعالجة وتفاصيل القناع. حجم الالتقاط يُطبّق عند بدء جلسة جديدة.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
        ProcessingProfileCard(profile){profileName=it.name;FilterSettings.processingProfile=it;onSaveFilterSettings()}
         PersonModelCard()
-       PersonTargetControls(snapshot, onUpdateTarget)
+       PersonTargetControls(snapshot, onUpdateTarget, onUpdatePresentation)
        FilterSettingsCard(effect,{effectName=it.name;FilterSettings.effect=it;onSaveFilterSettings()},blurStrength,{blurStrength=it;FilterSettings.blurStrengthPercent=it.roundToInt()},confidenceThreshold,{confidenceThreshold=it;FilterSettings.confidenceThreshold=it},maskExpansion,{maskExpansion=it;FilterSettings.maskExpansionRadius=it.roundToInt()},onSaveFilterSettings){
         FilterSettings.resetToDefaults();blurStrength=FilterSettings.blurStrengthPercent.toFloat();confidenceThreshold=FilterSettings.confidenceThreshold;maskExpansion=FilterSettings.maskExpansionRadius.toFloat();effectName=FilterSettings.effect.name;profileName=FilterSettings.processingProfile.name;onSaveFilterSettings()
        }
@@ -616,6 +655,39 @@ private fun MediaPreviewCard(bitmap:Bitmap?,busy:Boolean,message:String,coverage
    Text(message,style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
   }
  }
+}
+
+@Composable
+private fun ImageTargetModeCard(
+    targetMode: PersonTargetMode,
+    onChange: (PersonTargetMode) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("من تريد إظهاره في الصورة؟", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            listOf(
+                PersonTargetMode.MASK_ALL to "طمس الجميع",
+                PersonTargetMode.SHOW_MALE_PRESENTING_ONLY to "إبقاء الرجال ظاهرين",
+                PersonTargetMode.SHOW_FEMALE_PRESENTING_ONLY to "إبقاء النساء ظاهرات",
+            ).forEach { (mode, label) ->
+                if (targetMode == mode) {
+                    Button(onClick = { onChange(mode) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(14.dp)) { Text(label) }
+                } else {
+                    OutlinedButton(onClick = { onChange(mode) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(14.dp)) { Text(label) }
+                }
+            }
+            Text(
+                "التقدير مبني على وجه واضح لا على الشعر أو الملابس. الوجه غير المكتشف أو منخفض الثقة يبقى مطموماً. هذه السمة تقدّر المظهر المرئي ولا تحدد الهوية الجندرية.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                lineHeight = 19.sp,
+            )
+        }
+    }
 }
 
 @Composable
@@ -1084,8 +1156,10 @@ private fun PersonModelCard() {
 private fun PersonTargetControls(
     snapshot: SatrSessionSnapshot,
     onUpdateTarget: (PersonTargetMode, Set<Long>) -> Unit,
+    onUpdatePresentation: (Long, PersonPresentation?) -> Unit,
 ) {
     val selected = snapshot.selectedTrackIds
+    val sessionActive = snapshot.phase in setOf(SatrPhase.STARTING, SatrPhase.FILTERING, SatrPhase.NO_PERSON_DETECTED, SatrPhase.FAIL_CLOSED)
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
@@ -1098,24 +1172,52 @@ private fun PersonTargetControls(
                     PersonTargetMode.MASK_ALL -> "الوضع: طمس الجميع"
                     PersonTargetMode.MASK_SELECTED_ONLY -> "الوضع: طمس المحدد فقط"
                     PersonTargetMode.MASK_ALL_EXCEPT_SELECTED -> "الوضع: استثناء المحدد من التمويه"
+                    PersonTargetMode.SHOW_MALE_PRESENTING_ONLY -> "الوضع: إبقاء الرجال ذوي الثقة ظاهرين"
+                    PersonTargetMode.SHOW_FEMALE_PRESENTING_ONLY -> "الوضع: إبقاء النساء ذوات الثقة ظاهرات"
                 },
                 container = MaterialTheme.colorScheme.primaryContainer,
                 foreground = MaterialTheme.colorScheme.onPrimaryContainer,
             )
-            Text("ابدأ جلسة باستخدام RTMDet-Ins-Tiny لتظهر الأشخاص المكتشفون. حدّد من تريد طمسه أو استثناؤه؛ يتغير القناع في الجلسة الحالية فقط.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 21.sp)
+            Text(
+                if (sessionActive) "اختر سياسة الطمس. في وضع الرجال/النساء يلزم وجه واضح وثقتان متتاليتان؛ الوجوه غير المعروفة تبقى مطموسة."
+                else "ابدأ جلسة الحماية أولاً؛ تظهر هنا الأشخاص المكتشفون ثم يمكنك تحديدهم أو تصحيح تصنيف الوجه لهذه الجلسة.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                lineHeight = 21.sp,
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(onClick = { onUpdateTarget(PersonTargetMode.MASK_ALL, emptySet()) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("طمس الجميع") }
+                OutlinedButton(onClick = { onUpdateTarget(PersonTargetMode.MASK_ALL, emptySet()) }, enabled = sessionActive, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("طمس الجميع") }
                 OutlinedButton(
                     onClick = { if (selected.isNotEmpty()) onUpdateTarget(PersonTargetMode.MASK_SELECTED_ONLY, selected) },
-                    enabled = selected.isNotEmpty(),
+                    enabled = sessionActive && selected.isNotEmpty(),
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                 ) { Text("طمس المحدد") }
             }
             OutlinedButton(
                 onClick = { onUpdateTarget(PersonTargetMode.MASK_ALL_EXCEPT_SELECTED, selected) },
-                enabled = selected.isNotEmpty(),
+                enabled = sessionActive && selected.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             ) { Text("طمس الجميع عدا المحدد") }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Text("الفلترة حسب الوجه", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(
+                "يتطلب هذا الوضع وجهاً واضحاً. التصنيف منخفض الثقة أو غير المعروف يبقى مطموماً؛ الأزرار أدناه تسمح بتصحيح نتيجة شخص لهذه الجلسة.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                lineHeight = 19.sp,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(
+                    onClick = { onUpdateTarget(PersonTargetMode.SHOW_MALE_PRESENTING_ONLY, emptySet()) },
+                    enabled = sessionActive,
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                ) { Text("إبقاء الرجال ظاهرين") }
+                OutlinedButton(
+                    onClick = { onUpdateTarget(PersonTargetMode.SHOW_FEMALE_PRESENTING_ONLY, emptySet()) },
+                    enabled = sessionActive,
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                ) { Text("إبقاء النساء ظاهرات") }
+            }
              if (snapshot.detectedPeople.isEmpty()) {
                 Text("لم تُرصد أشخاص في الإطار الحالي بعد. افتح محتوى تظهر فيه أشخاص وانتظر ظهور القائمة.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
@@ -1123,23 +1225,60 @@ private fun PersonTargetControls(
                 snapshot.detectedPeople.forEach { person ->
                     val isSelected = person.trackId in selected
                     val position = "المركز " + (person.box.centerX * 100).roundToInt() + "٪ أفقياً، " + (person.box.centerY * 100).roundToInt() + "٪ عمودياً"
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text("شخص #" + person.trackId, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                            Text(position + " · ثقة الرصد " + (person.confidence * 100).roundToInt() + "٪", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text("شخص #" + person.trackId, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                                Text(position + " · ثقة الرصد " + (person.confidence * 100).roundToInt() + "٪", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                val label = when (person.presentation) {
+                                    PersonPresentation.MALE_PRESENTING -> "رجل محتمل"
+                                    PersonPresentation.FEMALE_PRESENTING -> "امرأة محتملة"
+                                    PersonPresentation.UNKNOWN -> "غير معروف"
+                                }
+                                Text(
+                                    "تصنيف الوجه: $label" + if (person.presentationOverridden) " · تصحيح يدوي" else if (person.presentation != PersonPresentation.UNKNOWN) " · ثقة " + (person.presentationConfidence * 100).roundToInt() + "٪" else "",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    val updated = if (isSelected) selected - person.trackId else selected + person.trackId
+                                    val nextMode = if (snapshot.personTargetMode == PersonTargetMode.MASK_SELECTED_ONLY && updated.isEmpty()) PersonTargetMode.MASK_ALL else snapshot.personTargetMode
+                                    onUpdateTarget(nextMode, updated)
+                                },
+                                enabled = sessionActive,
+                                modifier = Modifier.heightIn(min = 48.dp),
+                            ) { Text(if (isSelected) "إلغاء التحديد" else "تحديد") }
                         }
-                        OutlinedButton(
-                            onClick = {
-                                val updated = if (isSelected) selected - person.trackId else selected + person.trackId
-                                val nextMode = if (snapshot.personTargetMode == PersonTargetMode.MASK_SELECTED_ONLY && updated.isEmpty()) PersonTargetMode.MASK_ALL else snapshot.personTargetMode
-                                onUpdateTarget(nextMode, updated)
-                            },
-                            modifier = Modifier.heightIn(min = 48.dp),
-                        ) { Text(if (isSelected) "إلغاء التحديد" else "تحديد") }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(
+                                onClick = { onUpdatePresentation(person.trackId, PersonPresentation.MALE_PRESENTING) },
+                                enabled = sessionActive,
+                                modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                            ) { Text("تصحيح: رجل", maxLines = 1) }
+                            OutlinedButton(
+                                onClick = { onUpdatePresentation(person.trackId, PersonPresentation.FEMALE_PRESENTING) },
+                                enabled = sessionActive,
+                                modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                            ) { Text("تصحيح: امرأة", maxLines = 1) }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(
+                                onClick = { onUpdatePresentation(person.trackId, PersonPresentation.UNKNOWN) },
+                                enabled = sessionActive,
+                                modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                            ) { Text("غير معروف", maxLines = 1) }
+                            OutlinedButton(
+                                onClick = { onUpdatePresentation(person.trackId, null) },
+                                enabled = sessionActive && person.trackId in snapshot.presentationOverrides,
+                                modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                            ) { Text("إزالة التصحيح", maxLines = 1) }
+                        }
                     }
                 }
             }
-            Text("التصحيح هنا لا يدرّب أوزان النموذج تلقائياً. أرقام الأشخاص مؤقتة وقد تتغير عند اختفاء الشخص أو تغيّر المشهد؛ راجع الاختيار قبل الاعتماد عليه.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 19.sp)
+            Text("تصحيحات الوجه لا ترفع صوراً ولا تحدّث أوزان النموذج في الخلفية؛ تغيّر القرار لهذه الجلسة فقط. قد يخطئ المصنّف في الوجوه الصغيرة أو المحجوبة، لذلك تبقى النتائج غير المعروفة مطمومة.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 19.sp)
         }
     }
 }
