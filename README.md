@@ -1,10 +1,8 @@
 # Deku Satr
 
-**Local-first visual privacy tooling from Deku Foundation.**
+Deku Satr is an Android prototype that uses an on-device instance-segmentation model to identify people in captured screen frames and lets the user select which detections to mask. The repository also retains a browser prototype; native Android is the active development path.
 
-Deku Satr is being developed as a native Android utility that attempts to mask people visible on the screen across apps. The repository also retains a browser prototype for research. Android work is the active product path.
-
-> **Prototype warning:** Android v0.6.2 uses the pinned RTMDet-Ins-Tiny instance-segmentation model, with manual per-person selection. It is not a validated full-screen filter and can miss small, distant, occluded, or unusual-content people. Secure windows and DRM content may be un-capturable. Do not treat this release as guaranteed protection.
+> **Limits:** Version v0.6.2 uses RTMDet-Ins-Tiny. Detection can miss small, distant, occluded or unusual-content people. Android secure windows and DRM content may not be capturable. The app is not a validated full-screen privacy control and must not be treated as guaranteed protection.
 
 ## Native Android — current milestone
 
