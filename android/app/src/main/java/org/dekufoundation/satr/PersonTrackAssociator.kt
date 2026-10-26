@@ -52,6 +52,9 @@ data class TrackedPersonBox(
     val trackId: Long,
     val box: NormalizedPersonBox,
     val confidence: Float,
+    val presentation: PersonPresentation = PersonPresentation.UNKNOWN,
+    val presentationConfidence: Float = 0f,
+    val presentationOverridden: Boolean = false,
 )
 
 /**
