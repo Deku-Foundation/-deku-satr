@@ -88,3 +88,4 @@ jobs:
           name: satr-face-gender-model-contracts
           path: .model-probe
           if-no-files-found: error
+          include-hidden-files: true
