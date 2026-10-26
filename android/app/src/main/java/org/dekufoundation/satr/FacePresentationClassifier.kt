@@ -201,21 +201,19 @@ class FacePresentationClassifier(context: Context) : AutoCloseable {
     }
 
     private fun classifyFace(frame: Bitmap, face: FaceCandidate): FacePresentationPrediction {
-        val sourcePoints = floatArrayOf(
-            face.landmarks[0], face.landmarks[1],
-            face.landmarks[2], face.landmarks[3],
-            face.landmarks[4], face.landmarks[5],
-        )
+        val sourcePoints = face.landmarks.copyOf()
         val scale = CLASSIFIER_INPUT_SIZE / 112f
         val targetPoints = floatArrayOf(
             38.2946f * scale, 51.6963f * scale,
             73.5318f * scale, 51.5014f * scale,
             56.0252f * scale, 71.7366f * scale,
+            41.5493f * scale, 92.3655f * scale,
+            70.7299f * scale, 92.2041f * scale,
         )
+        val transform = FaceAlignmentMath.similarityTransform(sourcePoints, targetPoints)
+            ?: return FacePresentationPrediction(PersonPresentation.UNKNOWN, 0f)
         alignMatrix.reset()
-        if (!alignMatrix.setPolyToPoly(sourcePoints, 0, targetPoints, 0, 3)) {
-            return FacePresentationPrediction(PersonPresentation.UNKNOWN, 0f)
-        }
+        alignMatrix.setValues(transform)
         alignCanvas.drawColor(Color.BLACK)
         alignCanvas.drawBitmap(frame, alignMatrix, alignPaint)
         alignedFace.getPixels(classifierPixels, 0, CLASSIFIER_INPUT_SIZE, 0, 0, CLASSIFIER_INPUT_SIZE, CLASSIFIER_INPUT_SIZE)
