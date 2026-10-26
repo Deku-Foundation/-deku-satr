@@ -219,9 +219,9 @@ class ScreenCaptureService : Service() {
                 detail = when {
                     requiresSelection && requestedIds.isEmpty() -> "لم تحدد أي شخص؛ عادت الحماية إلى طمس الجميع."
                     safeMode == PersonTargetMode.SHOW_MALE_PRESENTING_ONLY ->
-                        "وضع الرجال: تُترك الوجوه ذات التصنيف المرجّح والواثق ظاهرة؛ تُطمس النساء والوجوه غير المعروفة."
+                        "يجري تهيئة مصنّف الوجه لوضع الرجال؛ تبقى كل الوجوه غير المعروفة مطموسة."
                     safeMode == PersonTargetMode.SHOW_FEMALE_PRESENTING_ONLY ->
-                        "وضع النساء: تُترك الوجوه ذات التصنيف المرجّح والواثق ظاهرة؛ يُطمس الرجال والوجوه غير المعروفة."
+                        "يجري تهيئة مصنّف الوجه لوضع النساء؛ تبقى كل الوجوه غير المعروفة مطموسة."
                     else -> "تم تحديث اختيار الأشخاص يدوياً. التصحيح يغيّر سياسة الجلسة ولا يعيد تدريب أوزان النموذج."
                 },
                 personTargetMode = safeMode,
@@ -399,6 +399,8 @@ class ScreenCaptureService : Service() {
         FilterSettings.personTargetMode = PersonTargetMode.MASK_ALL
         FilterSettings.selectedPersonTrackIds = emptySet()
         personTrackAssociator.reset()
+        faceClassifierLoadFailed = false
+        faceClassifierLoading = false
         synchronized(this) {
             presentationOverrides.clear()
             stablePresentations.clear()
