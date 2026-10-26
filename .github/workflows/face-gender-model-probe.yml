@@ -1,0 +1,90 @@
+name: Face gender model contract probe
+
+on:
+  push:
+    branches: [feat/fastface-gender-classifier]
+    paths:
+      - ".github/workflows/face-gender-model-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: satr-face-gender-probe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Download pinned model artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .model-probe
+          REV="15240f03bb257385305e5985e04e6d2477a242fa"
+          curl --fail --location --retry 3 --retry-all-errors \
+            "https://huggingface.co/iFurySt/fastface/resolve/${REV}/models/fastface-small-112/model_int8_static.onnx" \
+            -o .model-probe/fastface-small-112-int8.onnx
+          curl --fail --location --retry 3 --retry-all-errors \
+            "https://huggingface.co/iFurySt/fastface/resolve/${REV}/models/fastface-large-128/model_int8_static.onnx" \
+            -o .model-probe/fastface-large-128-int8.onnx
+          curl --fail --location --retry 3 --retry-all-errors \
+            "https://github.com/opencv/opencv_zoo/raw/48b10fa505aeb51fbd127fc60a5c660040e823b7/models/face_detection_yunet/face_detection_yunet_2023mar.onnx" \
+            -o .model-probe/face_detection_yunet_2023mar.onnx
+          echo "Frozen revision: ${REV}"
+          sha256sum .model-probe/*
+          wc -c .model-probe/*
+      - name: Inspect ONNX contracts and CPU smoke-test
+        run: |
+          python -m pip install --disable-pip-version-check onnx==1.19.1 onnxruntime==1.23.2 numpy==2.2.6
+          python - <<'PY'
+          import json
+          import pathlib
+          import numpy as np
+          import onnx
+          import onnxruntime as ort
+
+          root = pathlib.Path(".model-probe")
+          for path in sorted(root.glob("*.onnx")):
+              model = onnx.load(str(path), load_external_data=True)
+              onnx.checker.check_model(model)
+              options = ort.SessionOptions()
+              options.intra_op_num_threads = 2
+              options.inter_op_num_threads = 1
+              session = ort.InferenceSession(str(path), sess_options=options, providers=["CPUExecutionProvider"])
+              contract = {
+                  "file": path.name,
+                  "bytes": path.stat().st_size,
+                  "inputs": [{"name": x.name, "shape": x.shape, "type": x.type} for x in session.get_inputs()],
+                  "outputs": [{"name": x.name, "shape": x.shape, "type": x.type} for x in session.get_outputs()],
+              }
+              print("CONTRACT", json.dumps(contract, sort_keys=True))
+              inputs = {}
+              for tensor in session.get_inputs():
+                  shape = [int(d) if isinstance(d, int) and d > 0 else 1 for d in tensor.shape]
+                  if tensor.type == "tensor(float)":
+                      value = np.zeros(shape, dtype=np.float32)
+                  elif tensor.type == "tensor(uint8)":
+                      value = np.zeros(shape, dtype=np.uint8)
+                  else:
+                      raise RuntimeError(f"Unsupported input type for pinned model: {tensor.name} {tensor.type}")
+                  inputs[tensor.name] = value
+              results = session.run(None, inputs)
+              for meta, value in zip(session.get_outputs(), results):
+                  arr = np.asarray(value)
+                  print("OUTPUT", path.name, meta.name, arr.dtype, arr.shape, "bytes=", arr.nbytes)
+              print("CPU_ZERO_INPUT_SMOKE", path.name, "OK")
+          PY
+      - name: Upload probe metadata
+        uses: actions/upload-artifact@v7
+        with:
+          name: satr-face-gender-model-contracts
+          path: .model-probe
+          if-no-files-found: error
