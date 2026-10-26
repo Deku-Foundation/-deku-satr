@@ -162,6 +162,101 @@ val downloadRtmdetAssets by tasks.registering {
 }
 tasks.named("preBuild").configure { dependsOn(downloadRtmdetAssets) }
 
+val facePresentationAssetsDirectory = layout.buildDirectory.dir("generated/facePresentationAssets")
+android.sourceSets.getByName("main").assets.srcDir(facePresentationAssetsDirectory.get().asFile)
+val yuNetModelFile = facePresentationAssetsDirectory.map { it.file("face_detection_yunet_2023mar.onnx") }
+val fastFaceModelFile = facePresentationAssetsDirectory.map { it.file("fastface-large-128-int8.onnx") }
+val fastFaceLicenseFile = facePresentationAssetsDirectory.map { it.file("FASTFACE_LICENSE") }
+val yuNetLicenseFile = facePresentationAssetsDirectory.map { it.file("YUNET_LICENSE") }
+
+val downloadFacePresentationAssets by tasks.registering {
+    outputs.files(yuNetModelFile, fastFaceModelFile, fastFaceLicenseFile, yuNetLicenseFile)
+    outputs.upToDateWhen { false }
+    doLast {
+        val yuNet = yuNetModelFile.get().asFile
+        val fastFace = fastFaceModelFile.get().asFile
+        val fastFaceLicense = fastFaceLicenseFile.get().asFile
+        val yuNetLicense = yuNetLicenseFile.get().asFile
+        yuNet.parentFile.mkdirs()
+
+        fun digest(file: File): String {
+            val md = MessageDigest.getInstance("SHA-256")
+            file.inputStream().use { input ->
+                val buffer = ByteArray(16 * 1024)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    md.update(buffer, 0, read)
+                }
+            }
+            return md.digest().joinToString("") { "%02x".format(it) }
+        }
+        fun download(url: String, destination: File) {
+            val temporary = File(destination.parentFile, destination.name + ".download")
+            try {
+                URL(url).openConnection().apply {
+                    connectTimeout = 20_000
+                    readTimeout = 120_000
+                }.getInputStream().use { input ->
+                    temporary.outputStream().use { output -> input.copyTo(output) }
+                }
+                if (destination.exists() && !destination.delete()) {
+                    throw GradleException("Cannot replace " + destination.name)
+                }
+                if (!temporary.renameTo(destination)) {
+                    throw GradleException("Cannot install " + destination.name)
+                }
+            } finally {
+                temporary.delete()
+            }
+        }
+
+        val fastFaceRevision = "15240f03bb257385305e5985e04e6d2477a242fa"
+        if (!fastFace.isFile || fastFace.length() != 4_008_918L ||
+            digest(fastFace) != "2834e70884800019972e588fbe95eb73ebe942120a364d8aaa60085ba4f5b9cf"
+        ) {
+            download(
+                "https://huggingface.co/iFurySt/fastface/resolve/" + fastFaceRevision + "/models/fastface-large-128/model_int8_static.onnx",
+                fastFace,
+            )
+        }
+        check(fastFace.length() == 4_008_918L &&
+            digest(fastFace) == "2834e70884800019972e588fbe95eb73ebe942120a364d8aaa60085ba4f5b9cf"
+        ) { "FastFace gender model failed size/SHA-256 verification." }
+
+        val yuNetRevision = "48b10fa505aeb51fbd127fc60a5c660040e823b7"
+        if (!yuNet.isFile || yuNet.length() != 232_589L ||
+            digest(yuNet) != "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
+        ) {
+            download(
+                "https://github.com/opencv/opencv_zoo/raw/" + yuNetRevision + "/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
+                yuNet,
+            )
+        }
+        check(yuNet.length() == 232_589L &&
+            digest(yuNet) == "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
+        ) { "YuNet face detector failed size/SHA-256 verification." }
+
+        if (!fastFaceLicense.isFile || fastFaceLicense.length() == 0L) {
+            download(
+                "https://raw.githubusercontent.com/iFurySt/fastface/cd8b24ce3de4f967332b9a7613e047bfe37368a7/LICENSE",
+                fastFaceLicense,
+            )
+        }
+        if (!yuNetLicense.isFile || yuNetLicense.length() == 0L) {
+            download(
+                "https://raw.githubusercontent.com/opencv/opencv_zoo/" + yuNetRevision + "/models/face_detection_yunet/LICENSE",
+                yuNetLicense,
+            )
+        }
+        check(fastFaceLicense.readText().contains("Apache License")) { "FastFace Apache-2.0 license is missing." }
+        check(yuNetLicense.readText().contains("MIT License")) { "YuNet MIT license is missing." }
+    }
+}
+tasks.named("preBuild").configure { dependsOn(downloadFacePresentationAssets) }
+
+
+
 
 
 dependencies {
