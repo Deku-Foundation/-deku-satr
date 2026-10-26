@@ -34,10 +34,11 @@ class FilterSettingsTest {
 
     @Test
     fun personModelProfileCanBeSwitched() {
-        FilterSettings.personModelProfile = PersonModelProfile.RTMDET_INS_S
-        assertEquals(PersonModelProfile.RTMDET_INS_S, FilterSettings.personModelProfile)
+        FilterSettings.personModelProfile = PersonModelProfile.RTMDET_INS_TINY
+        assertEquals(PersonModelProfile.RTMDET_INS_TINY, FilterSettings.personModelProfile)
+        assertEquals(listOf(PersonModelProfile.RTMDET_INS_TINY), PersonModelProfile.values().toList())
         FilterSettings.resetToDefaults()
-        assertEquals(PersonModelProfile.FAST_SEMANTIC, FilterSettings.personModelProfile)
+        assertEquals(PersonModelProfile.RTMDET_INS_TINY, FilterSettings.personModelProfile)
     }
 
     @Test
