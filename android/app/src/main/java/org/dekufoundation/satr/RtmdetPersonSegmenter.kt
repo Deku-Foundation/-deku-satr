@@ -37,6 +37,10 @@ class RtmdetPersonSegmenter(context: Context) : PersonSegmentationEngine {
     private val inputFloats = inputBuffer.asFloatBuffer()
 
     init {
+        // Remove stale cached weights from the previous experimental backends before allocating a new session.
+        // This reclaims storage on upgrade while preserving SharedPreferences and user settings.
+        File(context.cacheDir, LEGACY_S_MODEL_FILE).delete()
+        File(context.cacheDir, LEGACY_LRASPP_MODEL_FILE).delete()
         modelFile = File(context.cacheDir, MODEL_FILE)
         if (!modelFile.isFile || modelFile.length() != MODEL_BYTES || sha256(modelFile) != MODEL_SHA256) {
             context.assets.open(MODEL_FILE).use { source ->
@@ -211,6 +215,8 @@ class RtmdetPersonSegmenter(context: Context) : PersonSegmentationEngine {
     }
 
     private companion object {
+        const val LEGACY_S_MODEL_FILE = "rtmdet-ins_s_640x640.onnx"
+        const val LEGACY_LRASPP_MODEL_FILE = "lraspp_mobilenet_v3_large_dynamic_wi8_afp32.tflite"
         const val MODEL_FILE = "rtmdet-ins_tiny_640x640.onnx"
         const val MODEL_SHA256 = "99ee670820c4493aa13e20578b6a8e39781c319846dc41796a77765734beac5c"
         const val MODEL_BYTES = 24_032_356L
