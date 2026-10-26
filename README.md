@@ -2,23 +2,23 @@
 
 Deku Satr is an Android prototype that uses an on-device instance-segmentation model to identify people in captured screen frames and lets the user select which detections to mask. The repository also retains a browser prototype; native Android is the active development path.
 
-> **Limits:** Version v0.6.2 uses RTMDet-Ins-Tiny. Detection can miss small, distant, occluded or unusual-content people. Android secure windows and DRM content may not be capturable. The app is not a validated full-screen privacy control and must not be treated as guaranteed protection.
+> **Limits:** Version v0.6.3 adds an optional face-presentation targeting preview over RTMDet-Ins-Tiny person masks. It runs locally with pinned YuNet and FastFace models, but is not validated on a representative phone-screen/video dataset. It estimates visual presentation, not gender identity. Unknown or low-confidence faces stay blurred; screen-domain accuracy, heat and latency remain unmeasured. Android secure windows and DRM content may not be capturable.
 
 ## Native Android — current milestone
 
 Path: android/
 
-- Kotlin app with Arabic-first Material 3 UI, separate Home/Settings destinations, adaptive 680 dp maximum width, system light/dark themes, and a 48 dp floating Stop control.
+- Kotlin app with Arabic-first Material 3 UI, Home/Gallery/Editor/Settings destinations, a first-run welcome screen, adaptive 680 dp maximum width, system light/dark themes, and a 48 dp floating Stop control.
 - Explicit overlay permission and Android MediaProjection consent for every capture session; Android 14+ requests the full default display rather than a single app window.
 - A visible media-projection foreground service, notification stop action, draggable floating stop panel, and a full-screen transparent mask layer that does not accept touches.
-- Active model: RTMDet-Ins-Tiny ONNX (24,032,356 bytes), pinned to an immutable revision and SHA-256-verified at build time. It creates per-person masks and runs through ONNX Runtime CPU; the prior LR-ASPP model and NNAPI initialization path were removed to reduce package size and model-startup instability.
+- Person model: RTMDet-Ins-Tiny ONNX (24,032,356 bytes), pinned to an immutable revision and SHA-256-verified at build time. It creates per-person masks through ONNX Runtime CPU. Optional target modes lazy-load YuNet (232 KB, MIT) and FastFace-Large-128 (4.01 MB, Apache-2.0); the face artifacts are pinned, hash-checked and bundled with license texts.
 - Local in-memory processing offers four profiles: low-latency (360 px, single pass, 80 ms admission interval), power saver (480 px, single pass), balanced (640 px with tiling on tall/wide frames), and detail (720 px with tiling). The interval is a throttle, not a promised frame rate. Busy frames are dropped rather than queued. The selected effect can be blur, pixelation, or solid cover.
 - Android 12+ pass-through touch requires a maximum 0.8 opacity for the normal overlay. This is a documented residual-image tradeoff; fail-closed mode is fully opaque and may block underlying touches until Stop is tapped.
 - No camera or microphone permission, no screenshot file storage, and the manifest merger is instructed to remove the INTERNET permission.
 - Unit tests for capture-size policy, mask confidence bounds, and persisted filter-setting ranges.
 - GitHub Actions builds/tests the Android app, audits the merged manifest for the INTERNET permission, and uploads a debug APK artifact.
 
-The live path uses one pinned instance-segmentation model, reusable input buffers, one in-flight inference, optional tiling for large frames, and session-local manual target selection. The fastest profile reduces input size and can miss people farther away. Frame-admission intervals are throttles, not promised FPS. The app does not infer gender yet; manual corrections change the current mask policy but do not train weights or build persistent identities. Accuracy, latency and heat on real phones remain unmeasured. No 99% recall claim is made. See Android architecture (docs/android-architecture.md), privacy notes (docs/android-privacy.md), and model evaluation (docs/model-evaluation.md).
+The live path uses one pinned instance-segmentation model, reusable buffers, one in-flight inference and optional tiling. Gender-targeted modes load face models only after selection, require two high-confidence observations (>=0.88), and keep missing/uncertain faces blurred. Manual corrections apply only to the current session/image; they do not upload face crops or train weights. FastFace metrics from public face datasets are not screen-domain accuracy. Latency, heat and subgroup errors on real phones remain unmeasured; no 99% claim is made. See Android architecture (docs/android-architecture.md), privacy notes (docs/android-privacy.md), and model evaluation (docs/model-evaluation.md).
 
 
 ## Upgrading development APKs
