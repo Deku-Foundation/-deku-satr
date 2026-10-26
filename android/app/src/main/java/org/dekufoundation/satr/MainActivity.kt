@@ -1116,9 +1116,7 @@ private fun PersonTargetControls(
                 enabled = selected.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             ) { Text("طمس الجميع عدا المحدد") }
-            if (snapshot.personModelProfile != PersonModelProfile.RTMDET_INS_TINY) {
-                Text("الاختيار الفردي غير متاح في النموذج الخفيف. اختر RTMDet-Ins-Tiny ثم أعد تشغيل جلسة الحماية.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else if (snapshot.detectedPeople.isEmpty()) {
+             if (snapshot.detectedPeople.isEmpty()) {
                 Text("لم تُرصد أشخاص في الإطار الحالي بعد. افتح محتوى تظهر فيه أشخاص وانتظر ظهور القائمة.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 Text("الأشخاص المرصودون", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
@@ -1309,7 +1307,7 @@ private fun SafetyCard() {
                 Text("حدود النموذج", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFF613E00))
             }
             Text(
-                "النموذج الخفيف ينتج قناعاً مشتركاً للأشخاص، أما نموذج RTMDet-Ins-Tiny فينتج أقنعة منفصلة لكنه أكبر وأثقل. قد يفوّت كلاهما الأشخاص الصغار أو البعيدين أو المحجوبين. لا يمكن اعتبار التغطية كاملة قبل اختبارات أجهزة حقيقية؛ وقد يمنع Android التقاط بعض النوافذ الآمنة أو فيديو DRM.",
+                "RTMDet-Ins-Tiny ينتج أقنعة منفصلة للأشخاص، لكنه قد يفوّت الأشخاص الصغار أو البعيدين أو المحجوبين. لا يمكن اعتبار التغطية كاملة قبل اختبارات أجهزة حقيقية؛ وقد يمنع Android التقاط بعض النوافذ الآمنة أو فيديو DRM.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color(0xFF613E00),
                 lineHeight = 22.sp,
