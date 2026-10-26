@@ -105,38 +105,50 @@ class PersonTargetPolicyTest {
     }
     @Test
     fun genderModeLeavesOnlyHighConfidenceMatchingPresentationUnblurred() {
-        val male = first.copy(
+        val male = PersonInstanceMask(
             trackId = 30L,
+            width = 6,
+            height = 1,
+            pixels = booleanArrayOf(true, true, false, false, false, false),
+            confidence = 0.95f,
             presentation = PersonPresentation.MALE_PRESENTING,
             presentationConfidence = 0.93f,
         )
-        val female = second.copy(
+        val female = PersonInstanceMask(
             trackId = 40L,
+            width = 6,
+            height = 1,
+            pixels = booleanArrayOf(false, false, true, true, false, false),
+            confidence = 0.95f,
             presentation = PersonPresentation.FEMALE_PRESENTING,
             presentationConfidence = 0.95f,
         )
-        val unknown = first.copy(
+        val uncertain = PersonInstanceMask(
             trackId = 50L,
+            width = 6,
+            height = 1,
+            pixels = booleanArrayOf(false, false, false, false, true, true),
+            confidence = 0.90f,
             presentation = PersonPresentation.MALE_PRESENTING,
             presentationConfidence = 0.70f,
         )
         val menMode = PersonTargetPolicy.composeMask(
-            width = 4,
-            height = 2,
-            instances = listOf(male, female, unknown),
+            width = 6,
+            height = 1,
+            instances = listOf(male, female, uncertain),
             mode = PersonTargetMode.SHOW_MALE_PRESENTING_ONLY,
             selectedTrackIds = emptySet(),
         )
-        assertEquals(second.pixels.toList().zip(unknown.pixels.toList()) { a, b -> a || b }, menMode.toList())
+        assertEquals(listOf(false, false, true, true, true, true), menMode.toList())
 
         val womenMode = PersonTargetPolicy.composeMask(
-            width = 4,
-            height = 2,
-            instances = listOf(male, female, unknown),
+            width = 6,
+            height = 1,
+            instances = listOf(male, female, uncertain),
             mode = PersonTargetMode.SHOW_FEMALE_PRESENTING_ONLY,
             selectedTrackIds = emptySet(),
         )
-        assertEquals(first.pixels.toList().zip(unknown.pixels.toList()) { a, b -> a || b }, womenMode.toList())
+        assertEquals(listOf(true, true, false, false, true, true), womenMode.toList())
     }
 
     @Test
