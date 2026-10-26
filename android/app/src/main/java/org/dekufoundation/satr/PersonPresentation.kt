@@ -62,13 +62,13 @@ internal class PersonPresentationStabilizer(
         val state = states.getOrPut(trackId) { State() }
         val usable = prediction != PersonPresentation.UNKNOWN && confidence >= minimumConfidence
         if (!usable) {
+            // A missing/uncertain face must immediately become UNKNOWN so gender mode blurs it.
             state.candidate = PersonPresentation.UNKNOWN
             state.candidateCount = 0
-            if (state.lastConfidentAtMs < 0L || timestampMs - state.lastConfidentAtMs > maxHoldMs) {
-                state.stable = PersonPresentation.UNKNOWN
-                state.confidence = 0f
-            }
-            return StablePersonPresentation(state.stable, state.confidence)
+            state.stable = PersonPresentation.UNKNOWN
+            state.confidence = 0f
+            state.lastConfidentAtMs = timestampMs
+            return StablePersonPresentation(PersonPresentation.UNKNOWN, 0f)
         }
 
         if (state.candidate == prediction) {
@@ -77,15 +77,15 @@ internal class PersonPresentationStabilizer(
             state.candidate = prediction
             state.candidateCount = 1
         }
+        if (state.stable != prediction && state.candidateCount < requiredMatches) {
+            // Do not preserve the previous opposing label during a transition.
+            state.stable = PersonPresentation.UNKNOWN
+            state.confidence = 0f
+        }
         if (state.candidateCount >= requiredMatches) {
             state.stable = prediction
             state.confidence = confidence
             state.lastConfidentAtMs = timestampMs
-        } else if (state.stable != prediction &&
-            (state.lastConfidentAtMs < 0L || timestampMs - state.lastConfidentAtMs > maxHoldMs)
-        ) {
-            state.stable = PersonPresentation.UNKNOWN
-            state.confidence = 0f
         }
         return StablePersonPresentation(state.stable, state.confidence)
     }
