@@ -38,6 +38,13 @@ class ScreenCaptureService : Service() {
     @Volatile private var segmenter: PersonSegmentationEngine? = null
     @Volatile private var activePersonModelProfile: PersonModelProfile = PersonModelProfile.RTMDET_INS_TINY
     private val personTrackAssociator = PersonTrackAssociator()
+    private val presentationStabilizer = PersonPresentationStabilizer()
+    private val stablePresentations = mutableMapOf<Long, StablePersonPresentation>()
+    private val presentationOverrides = mutableMapOf<Long, PersonPresentation>()
+    @Volatile private var facePresentationClassifier: FacePresentationClassifier? = null
+    @Volatile private var faceClassifierLoading = false
+    @Volatile private var faceClassifierLoadFailed = false
+    private var nextPresentationScanAtMs = 0L
     private var lastTargetMode = PersonTargetMode.MASK_ALL
     private var lastSelectedTrackIds: Set<Long> = emptySet()
     private var inferenceExecutor: ExecutorService? = null
@@ -116,6 +123,10 @@ class ScreenCaptureService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        if (intent?.action == ACTION_UPDATE_PRESENTATION) {
+            applyPresentationOverride(intent)
+            return START_NOT_STICKY
+        }
         if (intent?.action == ACTION_UPDATE_TARGETS) {
             applyTargetUpdate(intent)
             return START_NOT_STICKY
@@ -175,7 +186,7 @@ class ScreenCaptureService : Service() {
             FilterSettings.selectedPersonTrackIds = emptySet()
             SessionStatus.update { current ->
                 current.copy(
-                    detail = "لتحديد أشخاص منفردين، اختر نموذج التقسيم الفردي ثم ابدأ جلسة جديدة.",
+                    detail = "لا يمكن تغيير سياسة التمويه حالياً؛ استُعيد طمس الجميع.",
                     personTargetMode = PersonTargetMode.MASK_ALL,
                     selectedTrackIds = emptySet(),
                 )
@@ -190,11 +201,8 @@ class ScreenCaptureService : Service() {
             .split(',')
             .mapNotNull { it.toLongOrNull()?.takeIf { id -> id >= 0L } }
             .toSet()
-        val safeMode = if (requestedMode == PersonTargetMode.MASK_SELECTED_ONLY && requestedIds.isEmpty()) {
-            PersonTargetMode.MASK_ALL
-        } else {
-            requestedMode
-        }
+        val requiresSelection = requestedMode == PersonTargetMode.MASK_SELECTED_ONLY
+        val safeMode = if (requiresSelection && requestedIds.isEmpty()) PersonTargetMode.MASK_ALL else requestedMode
         FilterSettings.selectedPersonTrackIds = requestedIds
         FilterSettings.personTargetMode = safeMode
         synchronized(this) {
@@ -208,13 +216,172 @@ class ScreenCaptureService : Service() {
         }
         SessionStatus.update { current ->
             current.copy(
-                detail = if (requestedMode == PersonTargetMode.MASK_SELECTED_ONLY && requestedIds.isEmpty()) {
-                    "لم تحدد أي شخص؛ عادت الحماية إلى طمس الجميع."
-                } else {
-                    "تم تحديث اختيار الأشخاص يدوياً. هذا لا يعيد تدريب أوزان النموذج."
+                detail = when {
+                    requiresSelection && requestedIds.isEmpty() -> "لم تحدد أي شخص؛ عادت الحماية إلى طمس الجميع."
+                    safeMode == PersonTargetMode.SHOW_MALE_PRESENTING_ONLY ->
+                        "يجري تهيئة مصنّف الوجه لوضع الرجال؛ تبقى كل الوجوه غير المعروفة مطموسة."
+                    safeMode == PersonTargetMode.SHOW_FEMALE_PRESENTING_ONLY ->
+                        "يجري تهيئة مصنّف الوجه لوضع النساء؛ تبقى كل الوجوه غير المعروفة مطموسة."
+                    else -> "تم تحديث اختيار الأشخاص يدوياً. التصحيح يغيّر سياسة الجلسة ولا يعيد تدريب أوزان النموذج."
                 },
                 personTargetMode = safeMode,
                 selectedTrackIds = requestedIds,
+                presentationOverrides = synchronized(this) { presentationOverrides.toMap() },
+            )
+        }
+        if (safeMode.requiresGenderPresentation()) requestFaceClassifierLoad()
+    }
+
+    private fun applyPresentationOverride(command: Intent?) {
+        if (projection == null || stopping) return
+        val trackId = command?.getLongExtra(EXTRA_PRESENTATION_TRACK_ID, -1L) ?: -1L
+        if (trackId < 0L || SessionStatus.current().detectedPeople.none { it.trackId == trackId }) return
+        val rawValue = command?.getStringExtra(EXTRA_PRESENTATION_VALUE).orEmpty()
+        val parsed = if (rawValue.isBlank()) null else runCatching {
+            PersonPresentation.valueOf(rawValue)
+        }.getOrNull() ?: PersonPresentation.UNKNOWN
+        val snapshotOverrides = synchronized(this) {
+            if (parsed == null) presentationOverrides.remove(trackId) else presentationOverrides[trackId] = parsed
+            presentationOverrides.toMap()
+        }
+        SessionStatus.update { current ->
+            current.copy(
+                detail = if (parsed == null) {
+                    "أُزيل التصحيح اليدوي للشخص #$trackId؛ سيُستخدم تصنيف الوجه عند توافره."
+                } else {
+                    "تم تطبيق تصحيح جلسة على الشخص #$trackId. لا تُحفظ صور الوجوه ولا تُدرّب الأوزان."
+                },
+                presentationOverrides = snapshotOverrides,
+            )
+        }
+        synchronized(this) {
+            lastGoodConfidence = null
+            lastGoodMaskWidth = 0
+            lastGoodMaskHeight = 0
+            lastGoodMaskAtMs = 0L
+        }
+    }
+
+    private fun requestFaceClassifierLoad() {
+        synchronized(this) {
+            if (facePresentationClassifier != null || faceClassifierLoading || faceClassifierLoadFailed || stopping) return
+            faceClassifierLoading = true
+        }
+        val worker = inferenceExecutor
+        if (worker == null) {
+            synchronized(this) { faceClassifierLoading = false }
+            SessionStatus.update { it.copy(detail = "تعذّر تجهيز مصنّف الوجه؛ ستبقى الوجوه غير المعروفة مطموسة.") }
+            return
+        }
+        try {
+            worker.execute {
+                var loaded: FacePresentationClassifier? = null
+                try {
+                    loaded = FacePresentationClassifier(applicationContext)
+                    val installed = synchronized(this) {
+                        faceClassifierLoading = false
+                        if (stopping) false else {
+                            facePresentationClassifier = loaded
+                            nextPresentationScanAtMs = 0L
+                            true
+                        }
+                    }
+                    if (!installed) loaded.close() else {
+                        SessionStatus.update { current ->
+                            current.copy(detail = "اكتمل تحميل مصنّف الوجه محلياً. ستُطمس الوجوه غير المعروفة أو منخفضة الثقة.")
+                        }
+                    }
+                } catch (_: OutOfMemoryError) {
+                    loaded?.let { runCatching { it.close() } }
+                    synchronized(this) {
+                        faceClassifierLoading = false
+                        faceClassifierLoadFailed = true
+                        facePresentationClassifier = null
+                    }
+                    SessionStatus.update { current ->
+                        current.copy(detail = "الذاكرة غير كافية لمصنّف الوجه؛ استمر طمس الجميع ولم تتوقف جلسة الأشخاص.")
+                    }
+                } catch (_: Exception) {
+                    loaded?.let { runCatching { it.close() } }
+                    synchronized(this) {
+                        faceClassifierLoading = false
+                        faceClassifierLoadFailed = true
+                        facePresentationClassifier = null
+                    }
+                    SessionStatus.update { current ->
+                        current.copy(detail = "تعذّر تحميل مصنّف الوجه؛ ستبقى الوجوه غير المعروفة مطموسة.")
+                    }
+                }
+            }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            synchronized(this) { faceClassifierLoading = false }
+            SessionStatus.update { it.copy(detail = "انتهت جلسة المعالجة؛ لم يُحمّل مصنّف الوجه.") }
+        }
+    }
+
+    private fun attachPresentations(
+        frame: Bitmap,
+        trackedPeople: List<TrackedPersonBox>,
+        mode: PersonTargetMode,
+        timestampMs: Long,
+    ): List<TrackedPersonBox> {
+        val activeIds = trackedPeople.map { it.trackId }.toSet()
+        if (!mode.requiresGenderPresentation()) {
+            return trackedPeople.map { person ->
+                val override = synchronized(this) { presentationOverrides[person.trackId] }
+                person.copy(
+                    presentation = override ?: PersonPresentation.UNKNOWN,
+                    presentationConfidence = if (override != null) 1f else 0f,
+                    presentationOverridden = override != null,
+                )
+            }
+        }
+
+        val classifier = facePresentationClassifier
+        if (classifier == null) {
+            requestFaceClassifierLoad()
+        } else if (timestampMs >= nextPresentationScanAtMs) {
+            nextPresentationScanAtMs = timestampMs + PRESENTATION_SCAN_INTERVAL_MS
+            val predictions = try {
+                classifier.classify(frame, trackedPeople)
+            } catch (_: OutOfMemoryError) {
+                synchronized(this) {
+                    faceClassifierLoadFailed = true
+                    facePresentationClassifier = null
+                    faceClassifierLoading = false
+                }
+                runCatching { classifier.close() }
+                SessionStatus.update { it.copy(detail = "نفدت الذاكرة أثناء تحليل الوجه؛ استمر طمس الوجوه غير المعروفة.") }
+                emptyMap()
+            } catch (_: Exception) {
+                // Detector/model errors never promote an unknown person to a visible target.
+                emptyMap()
+            }
+            synchronized(this) {
+                trackedPeople.forEach { person ->
+                    val prediction = predictions[person.trackId]
+                        ?: FacePresentationPrediction(PersonPresentation.UNKNOWN, 0f)
+                    stablePresentations[person.trackId] = presentationStabilizer.update(
+                        trackId = person.trackId,
+                        prediction = prediction.presentation,
+                        confidence = prediction.confidence,
+                        timestampMs = timestampMs,
+                    )
+                }
+                presentationStabilizer.retainTracks(activeIds, timestampMs)
+                stablePresentations.keys.retainAll(activeIds)
+            }
+        }
+
+        val overrides = synchronized(this) { presentationOverrides.toMap() }
+        val stable = synchronized(this) { stablePresentations.toMap() }
+        return trackedPeople.map { person ->
+            val manual = overrides[person.trackId]
+            val modelState = stable[person.trackId] ?: StablePersonPresentation()
+            person.copy(
+                presentation = manual ?: modelState.presentation,
+                presentationConfidence = if (manual != null) 1f else modelState.confidence,
+                presentationOverridden = manual != null,
             )
         }
     }
@@ -232,6 +399,14 @@ class ScreenCaptureService : Service() {
         FilterSettings.personTargetMode = PersonTargetMode.MASK_ALL
         FilterSettings.selectedPersonTrackIds = emptySet()
         personTrackAssociator.reset()
+        faceClassifierLoadFailed = false
+        faceClassifierLoading = false
+        synchronized(this) {
+            presentationOverrides.clear()
+            stablePresentations.clear()
+            presentationStabilizer.reset()
+            nextPresentationScanAtMs = 0L
+        }
         lastTargetMode = PersonTargetMode.MASK_ALL
         lastSelectedTrackIds = emptySet()
         synchronized(this) {
@@ -458,15 +633,28 @@ class ScreenCaptureService : Service() {
                             temporalMaskSmoother.reset()
                         }
                     }
-                    val detectedPeople = if (activePersonModelProfile == PersonModelProfile.RTMDET_INS_TINY) {
+                    val rawTrackedPeople = if (activePersonModelProfile == PersonModelProfile.RTMDET_INS_TINY) {
                         personTrackAssociator.update(
                             mask.instances.map { PersonBoxDetection(it.box, it.confidence) },
                             frameNow,
                         )
                     } else emptyList()
+                    val detectedPeople = attachPresentations(frame, rawTrackedPeople, currentTargetMode, frameNow)
+                    val currentOverrides = synchronized(this) { presentationOverrides.toMap() }
                     val freshValues = if (activePersonModelProfile == PersonModelProfile.RTMDET_INS_TINY) {
-                        val instanceMasks = mask.instances.zip(detectedPeople).map { (instance, tracked) ->
-                            PersonInstanceMask(tracked.trackId, mask.width, mask.height, instance.pixels, instance.confidence)
+                        val trackedById = detectedPeople.associateBy { it.trackId }
+                        val instanceMasks = mask.instances.zip(rawTrackedPeople).map { (instance, rawTracked) ->
+                            val tracked = trackedById[rawTracked.trackId] ?: rawTracked
+                            PersonInstanceMask(
+                                trackId = tracked.trackId,
+                                width = mask.width,
+                                height = mask.height,
+                                pixels = instance.pixels,
+                                confidence = instance.confidence,
+                                presentation = tracked.presentation,
+                                presentationConfidence = tracked.presentationConfidence,
+                                manualPresentation = currentOverrides[tracked.trackId],
+                            )
                         }
                         val safeMode = if (currentTargetMode == PersonTargetMode.MASK_SELECTED_ONLY && currentSelectedIds.isEmpty()) {
                             PersonTargetMode.MASK_ALL
@@ -575,6 +763,7 @@ class ScreenCaptureService : Service() {
                                 personModelProfile = activePersonModelProfile,
                                 personTargetMode = FilterSettings.personTargetMode,
                                 selectedTrackIds = FilterSettings.selectedPersonTrackIds,
+                                presentationOverrides = currentOverrides,
                             )
                             lastSuccessfulFrameMs = SystemClock.elapsedRealtime()
                             val shouldUpdateMask =
@@ -769,9 +958,16 @@ class ScreenCaptureService : Service() {
 
     private fun closeSegmenterIfSafe() {
         val current = synchronized(this) {
-            if (inferenceBusy.get()) null else segmenter.also { segmenter = null }
+            if (inferenceBusy.get()) null else {
+                val engines = segmenter to facePresentationClassifier
+                segmenter = null
+                facePresentationClassifier = null
+                faceClassifierLoading = false
+                engines
+            }
         } ?: return
-        runCatching { current.close() }
+        current.first?.let { runCatching { it.close() } }
+        current.second?.let { runCatching { it.close() } }
     }
 
     private fun cleanup() {
@@ -838,8 +1034,11 @@ class ScreenCaptureService : Service() {
         const val ACTION_START = "org.dekufoundation.satr.action.START_CAPTURE"
         const val ACTION_STOP = "org.dekufoundation.satr.action.STOP_CAPTURE"
         const val ACTION_UPDATE_TARGETS = "org.dekufoundation.satr.action.UPDATE_TARGETS"
+        const val ACTION_UPDATE_PRESENTATION = "org.dekufoundation.satr.action.UPDATE_PRESENTATION"
         const val EXTRA_TARGET_MODE = "target_mode"
         const val EXTRA_SELECTED_TRACK_IDS = "selected_track_ids"
+        const val EXTRA_PRESENTATION_TRACK_ID = "presentation_track_id"
+        const val EXTRA_PRESENTATION_VALUE = "presentation_value"
         const val EXTRA_RESULT_CODE = "projection_result_code"
         const val EXTRA_RESULT_DATA = "projection_result_data"
         const val EXTRA_CAPTURE_WIDTH = "capture_width"
@@ -852,6 +1051,7 @@ class ScreenCaptureService : Service() {
         private const val STOP_PENDING_INTENT_REQUEST = 411
         private const val MAX_IMAGES = 2
         private const val MASK_HOLD_MS = 250L
+        private const val PRESENTATION_SCAN_INTERVAL_MS = 650L
         private const val STALE_FRAME_LIMIT_MS = 3_500L
         private const val WATCHDOG_INTERVAL_MS = 500L
         private const val MAX_MASK_PIXELS = 2_000_000
