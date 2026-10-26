@@ -107,3 +107,9 @@ object PersonTargetPolicy {
         return output
     }
 }
+
+
+/** Returns whether a target mode needs a face-appearance label in addition to person masks. */
+internal fun PersonTargetMode.requiresGenderPresentation(): Boolean =
+    this == PersonTargetMode.SHOW_MALE_PRESENTING_ONLY ||
+        this == PersonTargetMode.SHOW_FEMALE_PRESENTING_ONLY
