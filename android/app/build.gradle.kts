@@ -97,6 +97,8 @@ val downloadRtmdetAssets by tasks.registering {
         val license = rtmdetLicenseFile.get().asFile
         val notice = rtmdetNoticeFile.get().asFile
         model.parentFile.mkdirs()
+        // A local incremental build may still contain the former 43 MB S variant.
+        File(model.parentFile, "rtmdet-ins_s_640x640.onnx").delete()
         fun digest(file: File): String {
             val md = MessageDigest.getInstance("SHA-256")
             file.inputStream().use { stream ->
