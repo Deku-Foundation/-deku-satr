@@ -23,6 +23,7 @@ data class SatrSessionSnapshot(
     val personModelProfile: PersonModelProfile = PersonModelProfile.RTMDET_INS_TINY,
     val personTargetMode: PersonTargetMode = PersonTargetMode.MASK_ALL,
     val selectedTrackIds: Set<Long> = emptySet(),
+    val presentationOverrides: Map<Long, PersonPresentation> = emptyMap(),
 )
 
 object SessionStatus {
