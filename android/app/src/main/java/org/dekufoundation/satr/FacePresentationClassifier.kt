@@ -178,15 +178,15 @@ class FacePresentationClassifier(context: Context) : AutoCloseable {
                             val faceRight = (rightInput / scaleX).coerceIn(0f, frame.width.toFloat())
                             val faceBottom = (bottomInput / scaleY).coerceIn(0f, frame.height.toFloat())
                             if (faceRight <= faceLeft || faceBottom <= faceTop) continue
-                            val points = FloatArray(10)
+                            val yuNetPoints = FloatArray(10)
                             for (point in 0 until 5) {
                                 val lx = landmarks.get(index * 10 + point * 2) + column
                                 val ly = landmarks.get(index * 10 + point * 2 + 1) + row
                                 // YuNet's landmark head regresses coordinates in feature-map units.
-                                points[point * 2] = (lx * stride / scaleX).coerceIn(0f, frame.width.toFloat())
-                                points[point * 2 + 1] = (ly * stride / scaleY).coerceIn(0f, frame.height.toFloat())
+                                yuNetPoints[point * 2] = (lx * stride / scaleX).coerceIn(0f, frame.width.toFloat())
+                                yuNetPoints[point * 2 + 1] = (ly * stride / scaleY).coerceIn(0f, frame.height.toFloat())
                             }
-                            if (!points.all { it.isFinite() }) continue
+                            val points = FaceAlignmentMath.reorderYuNetToFastFace(yuNetPoints) ?: continue
                             candidates += FaceCandidate(faceLeft, faceTop, faceRight, faceBottom, points, score)
                         }
                     }
