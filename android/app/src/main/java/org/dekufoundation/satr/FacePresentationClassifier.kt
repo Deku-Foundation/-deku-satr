@@ -59,25 +59,39 @@ class FacePresentationClassifier(context: Context) : AutoCloseable {
 
     init {
         detectorSession = createSession(detectorModel)
-        classifierSession = createSession(classifierModel)
-        detectorInputName = detectorSession.inputNames.firstOrNull()
-            ?: error("The face detector has no input tensor.")
-        classifierInputName = classifierSession.inputNames.firstOrNull()
-            ?: error("The FastFace model has no input tensor.")
-        val detectorInfo = detectorSession.inputInfo[detectorInputName]?.info as? ai.onnxruntime.TensorInfo
-            ?: error("Face detector input metadata is missing.")
-        require(detectorInfo.shape.contentEquals(longArrayOf(1L, 3L, FACE_INPUT_SIZE.toLong(), FACE_INPUT_SIZE.toLong()))) {
-            "Face detector input differs from the pinned 640x640 contract."
+        classifierSession = try {
+            createSession(classifierModel)
+        } catch (failure: Throwable) {
+            runCatching { detectorSession.close() }
+            releaseScratchBuffers()
+            throw failure
         }
-        val classifierInfo = classifierSession.inputInfo[classifierInputName]?.info as? ai.onnxruntime.TensorInfo
-            ?: error("FastFace input metadata is missing.")
-        require(classifierInfo.shape.size == 4 &&
-            classifierInfo.shape[1] == 3L &&
-            classifierInfo.shape[2] == CLASSIFIER_INPUT_SIZE.toLong() &&
-            classifierInfo.shape[3] == CLASSIFIER_INPUT_SIZE.toLong()
-        ) { "FastFace input differs from the pinned NCHW contract." }
-        require(classifierSession.outputNames.contains("gender_logits")) {
-            "FastFace gender_logits output is missing."
+
+        try {
+            detectorInputName = detectorSession.inputNames.firstOrNull()
+                ?: error("The face detector has no input tensor.")
+            classifierInputName = classifierSession.inputNames.firstOrNull()
+                ?: error("The FastFace model has no input tensor.")
+            val detectorInfo = detectorSession.inputInfo[detectorInputName]?.info as? ai.onnxruntime.TensorInfo
+                ?: error("Face detector input metadata is missing.")
+            require(detectorInfo.shape.contentEquals(longArrayOf(1L, 3L, FACE_INPUT_SIZE.toLong(), FACE_INPUT_SIZE.toLong()))) {
+                "Face detector input differs from the pinned 640x640 contract."
+            }
+            val classifierInfo = classifierSession.inputInfo[classifierInputName]?.info as? ai.onnxruntime.TensorInfo
+                ?: error("FastFace input metadata is missing.")
+            require(classifierInfo.shape.size == 4 &&
+                classifierInfo.shape[1] == 3L &&
+                classifierInfo.shape[2] == CLASSIFIER_INPUT_SIZE.toLong() &&
+                classifierInfo.shape[3] == CLASSIFIER_INPUT_SIZE.toLong()
+            ) { "FastFace input differs from the pinned NCHW contract." }
+            require(classifierSession.outputNames.contains("gender_logits")) {
+                "FastFace gender_logits output is missing."
+            }
+        } catch (failure: Throwable) {
+            runCatching { classifierSession.close() }
+            runCatching { detectorSession.close() }
+            releaseScratchBuffers()
+            throw failure
         }
     }
 
@@ -347,12 +361,18 @@ class FacePresentationClassifier(context: Context) : AutoCloseable {
     override fun close() {
         runCatching { classifierSession.close() }
         runCatching { detectorSession.close() }
+        releaseScratchBuffers()
+    }
+
+    private fun releaseScratchBuffers() {
         detectorPixels.fill(0)
         classifierPixels.fill(0)
-        detectorInputBitmap.eraseColor(Color.BLACK)
-        detectorInputBitmap.recycle()
-        alignedFace.eraseColor(Color.BLACK)
-        alignedFace.recycle()
+        runCatching { detectorInputBitmap.eraseColor(Color.BLACK) }
+        runCatching { detectorInputBitmap.recycle() }
+        runCatching { alignedFace.eraseColor(Color.BLACK) }
+        runCatching { alignedFace.recycle() }
+        detectorInputFloats.clear()
+        classifierInputFloats.clear()
     }
 
     private data class FaceCandidate(
