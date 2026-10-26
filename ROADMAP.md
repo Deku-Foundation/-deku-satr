@@ -73,9 +73,22 @@ A checked box means code or documentation has been added; it does not mean devic
 - [ ] Verify install, overlay behavior and battery/thermal performance on physical low-end and high-density devices.
 
 
-## Current Android model path (v0.6.2)
+## Current Android model path (v0.6.3 preview)
 
 - The only bundled model is RTMDet-Ins-Tiny ONNX (~24.03 MB), pinned to an immutable revision and verified by SHA-256 during Gradle builds.
 - The previous LR-ASPP/LiteRT semantic model and the larger RTMDet-Ins-S model were removed from the shipped APK. RTMDet runs via ONNX Runtime CPU, two intra-op threads; NNAPI startup was removed to reduce device-specific initialization risk.
 - Per-person target correction is manual and session-local. Gender-targeted policies remain blocked on a separate face detector/alignment + classifier evaluation, an explicit Unknown state, and user correction tests. Hair/clothing heuristics are not acceptable substitutes.
 - Debug APKs use a fixed development-only signing identity for in-place CI upgrades. One clean reinstall may be required when transitioning from an older artifact signed with a different key; never use this key for a production release.
+
+
+
+### Face-presentation target preview (v0.6.3)
+
+- [x] Add pinned YuNet + FastFace-Large-128 ONNX assets with build-time SHA-256 and license verification.
+- [x] Load face models only when a gender-target policy is selected; ordinary mask-all mode does not load them.
+- [x] Keep Unknown/missing/low-confidence faces blurred; require two live predictions at confidence >= 0.88.
+- [x] Add session-local corrections for person track labels; do not store or upload face crops and do not claim online weight training.
+- [x] Add matching target choices to still-image editing; use whole-image coverage if a gender-target photo has no usable person masks.
+- [ ] Evaluate face detection recall, per-target false-visible-person rate and subgroup error on a labeled, held-out phone screenshot/video dataset.
+- [ ] Benchmark the extra 4.24 MB face models on physical low-, mid- and high-tier phones for p50/p95 latency, RAM, heat and battery.
+- [ ] Review privacy/disclosure language and obtain a production-device test run before calling this release-ready.
