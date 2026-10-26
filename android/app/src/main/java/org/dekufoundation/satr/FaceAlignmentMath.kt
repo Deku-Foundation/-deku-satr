@@ -5,6 +5,20 @@ package org.dekufoundation.satr
  * Returns a 3x3 Android Matrix value array mapping source landmarks to target points.
  */
 internal object FaceAlignmentMath {
+    /**
+     * YuNet returns [right eye, left eye, nose, right mouth, left mouth].
+     * FastFace uses the aligned-crop order [left eye, right eye, nose, left mouth, right mouth].
+     */
+    fun reorderYuNetToFastFace(landmarks: FloatArray): FloatArray? {
+        if (landmarks.size != 10 || !landmarks.all { it.isFinite() }) return null
+        val sourcePointForTarget = intArrayOf(1, 0, 2, 4, 3)
+        return FloatArray(10) { index ->
+            val targetPoint = index / 2
+            val coordinate = index % 2
+            landmarks[sourcePointForTarget[targetPoint] * 2 + coordinate]
+        }
+    }
+
     fun similarityTransform(source: FloatArray, target: FloatArray): FloatArray? {
         if (source.size != 10 || target.size != 10) return null
         if (!source.all { it.isFinite() } || !target.all { it.isFinite() }) return null
