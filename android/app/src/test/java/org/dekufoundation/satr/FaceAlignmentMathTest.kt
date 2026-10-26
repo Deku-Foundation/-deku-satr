@@ -5,6 +5,23 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class FaceAlignmentMathTest {
+
+    @Test
+    fun reordersYuNetLandmarksToFastFaceCanonicalOrder() {
+        val yuNet = floatArrayOf(
+            10f, 11f, // right eye
+            20f, 21f, // left eye
+            30f, 31f, // nose
+            40f, 41f, // right mouth
+            50f, 51f, // left mouth
+        )
+        assertArrayEquals(
+            floatArrayOf(20f, 21f, 10f, 11f, 30f, 31f, 50f, 51f, 40f, 41f),
+            FaceAlignmentMath.reorderYuNetToFastFace(yuNet),
+            0f,
+        )
+    }
+
     @Test
     fun identicalLandmarksProduceIdentityMatrix() {
         val points = floatArrayOf(10f, 10f, 30f, 10f, 20f, 20f, 12f, 30f, 28f, 30f)
