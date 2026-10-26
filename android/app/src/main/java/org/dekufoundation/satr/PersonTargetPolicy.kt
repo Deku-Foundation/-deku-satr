@@ -15,6 +15,12 @@ enum class PersonTargetMode {
 
     /** Blur every detected person except tracks explicitly selected by the user. */
     MASK_ALL_EXCEPT_SELECTED,
+
+    /** Keep only high-confidence male-presenting faces visible; blur female and unknown tracks. */
+    SHOW_MALE_PRESENTING_ONLY,
+
+    /** Keep only high-confidence female-presenting faces visible; blur male and unknown tracks. */
+    SHOW_FEMALE_PRESENTING_ONLY,
 }
 
 data class PersonInstanceMask(
@@ -23,10 +29,15 @@ data class PersonInstanceMask(
     val height: Int,
     val pixels: BooleanArray,
     val confidence: Float,
+    val presentation: PersonPresentation = PersonPresentation.UNKNOWN,
+    val presentationConfidence: Float = 0f,
+    val manualPresentation: PersonPresentation? = null,
 )
 
 /** Pure, validated mask composition, ready for an instance-segmentation backend. */
 object PersonTargetPolicy {
+    private const val MIN_PRESENTATION_CONFIDENCE = 0.88f
+
     fun composeMask(
         width: Int,
         height: Int,
@@ -47,7 +58,9 @@ object PersonTargetPolicy {
                 it.height == height &&
                 it.pixels.size.toLong() == pixelCount &&
                 it.confidence.isFinite() &&
-                it.confidence in 0f..1f
+                it.confidence in 0f..1f &&
+                it.presentationConfidence.isFinite() &&
+                it.presentationConfidence in 0f..1f
         }) { "Every instance must match the frame geometry and have valid confidence." }
 
         // Never silently expose all people because the selection has not been made yet.
@@ -73,6 +86,18 @@ object PersonTargetPolicy {
                 PersonTargetMode.MASK_ALL -> true
                 PersonTargetMode.MASK_SELECTED_ONLY -> instance.trackId in selectedTrackIds
                 PersonTargetMode.MASK_ALL_EXCEPT_SELECTED -> instance.trackId !in selectedTrackIds
+                PersonTargetMode.SHOW_MALE_PRESENTING_ONLY -> {
+                    val label = instance.manualPresentation ?: instance.presentation.takeIf {
+                        instance.presentationConfidence >= MIN_PRESENTATION_CONFIDENCE
+                    } ?: PersonPresentation.UNKNOWN
+                    label != PersonPresentation.MALE_PRESENTING
+                }
+                PersonTargetMode.SHOW_FEMALE_PRESENTING_ONLY -> {
+                    val label = instance.manualPresentation ?: instance.presentation.takeIf {
+                        instance.presentationConfidence >= MIN_PRESENTATION_CONFIDENCE
+                    } ?: PersonPresentation.UNKNOWN
+                    label != PersonPresentation.FEMALE_PRESENTING
+                }
             }
             if (!shouldBlur) continue
             for (index in instance.pixels.indices) {
