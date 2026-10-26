@@ -579,7 +579,7 @@ private fun SatrDashboard(
        ModelCard(snapshot);SafetyCard();HowItWorksCard()
       }
      }
-     Text("ستر بلور · SATR BLUR · من Deku Foundation · إصدار تجريبي 0.6.2",modifier=Modifier.fillMaxWidth().padding(top=4.dp),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,textAlign=TextAlign.Center)
+     Text("ستر بلور · SATR BLUR · من Deku Foundation · إصدار تجريبي 0.6.3",modifier=Modifier.fillMaxWidth().padding(top=4.dp),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,textAlign=TextAlign.Center)
     }
    }
   }
