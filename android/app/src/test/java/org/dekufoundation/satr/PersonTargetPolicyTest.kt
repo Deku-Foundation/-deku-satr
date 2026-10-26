@@ -103,4 +103,83 @@ class PersonTargetPolicyTest {
             )
         }
     }
+    @Test
+    fun genderModeLeavesOnlyHighConfidenceMatchingPresentationUnblurred() {
+        val male = PersonInstanceMask(
+            trackId = 30L,
+            width = 6,
+            height = 1,
+            pixels = booleanArrayOf(true, true, false, false, false, false),
+            confidence = 0.95f,
+            presentation = PersonPresentation.MALE_PRESENTING,
+            presentationConfidence = 0.93f,
+        )
+        val female = PersonInstanceMask(
+            trackId = 40L,
+            width = 6,
+            height = 1,
+            pixels = booleanArrayOf(false, false, true, true, false, false),
+            confidence = 0.95f,
+            presentation = PersonPresentation.FEMALE_PRESENTING,
+            presentationConfidence = 0.95f,
+        )
+        val uncertain = PersonInstanceMask(
+            trackId = 50L,
+            width = 6,
+            height = 1,
+            pixels = booleanArrayOf(false, false, false, false, true, true),
+            confidence = 0.90f,
+            presentation = PersonPresentation.MALE_PRESENTING,
+            presentationConfidence = 0.70f,
+        )
+        val menMode = PersonTargetPolicy.composeMask(
+            width = 6,
+            height = 1,
+            instances = listOf(male, female, uncertain),
+            mode = PersonTargetMode.SHOW_MALE_PRESENTING_ONLY,
+            selectedTrackIds = emptySet(),
+        )
+        assertEquals(listOf(false, false, true, true, true, true), menMode.toList())
+
+        val womenMode = PersonTargetPolicy.composeMask(
+            width = 6,
+            height = 1,
+            instances = listOf(male, female, uncertain),
+            mode = PersonTargetMode.SHOW_FEMALE_PRESENTING_ONLY,
+            selectedTrackIds = emptySet(),
+        )
+        assertEquals(listOf(true, true, false, false, true, true), womenMode.toList())
+    }
+
+    @Test
+    fun manualCorrectionOverridesModelPresentationAndUnknownRemainsBlurred() {
+        val modelSaysFemale = first.copy(
+            presentation = PersonPresentation.FEMALE_PRESENTING,
+            presentationConfidence = 0.99f,
+            manualPresentation = PersonPresentation.MALE_PRESENTING,
+        )
+        val corrected = PersonTargetPolicy.composeMask(
+            width = 4,
+            height = 2,
+            instances = listOf(modelSaysFemale),
+            mode = PersonTargetMode.SHOW_MALE_PRESENTING_ONLY,
+            selectedTrackIds = emptySet(),
+        )
+        assertEquals(List(8) { false }, corrected.toList())
+
+        val forcedUnknown = first.copy(
+            presentation = PersonPresentation.MALE_PRESENTING,
+            presentationConfidence = 0.99f,
+            manualPresentation = PersonPresentation.UNKNOWN,
+        )
+        val unknown = PersonTargetPolicy.composeMask(
+            width = 4,
+            height = 2,
+            instances = listOf(forcedUnknown),
+            mode = PersonTargetMode.SHOW_MALE_PRESENTING_ONLY,
+            selectedTrackIds = emptySet(),
+        )
+        assertEquals(first.pixels.toList(), unknown.toList())
+    }
+
 }

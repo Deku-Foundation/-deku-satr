@@ -1,11 +1,11 @@
 # Native Android architecture
 
-Updated: 2026-10-26. Version 0.6.2 removes the former LR-ASPP backend and uses a pinned RTMDet-Ins-Tiny ONNX instance-segmentation model for both live frames and still images. Model load is deferred to the foreground service or image-processing worker, ONNX Runtime is configured for CPU only, and the previous RTMDet-S cache file is deleted during migration. Hosted CI can validate compilation and model artifact integrity; it cannot prove phone compatibility or production accuracy.
+Updated: 2026-10-26. Version 0.6.3 adds an optional, on-demand face-presentation path above the RTMDet-Ins-Tiny ONNX person-instance segmentation backend. YuNet and FastFace-Large-128 are loaded only for gender-targeted policies, while the ordinary mask-all path does not load face models. Model load is deferred to a foreground service or image worker, and the obsolete RTMDet-S and LR-ASPP cache files are deleted during migration. Hosted CI validates compilation and pinned model artifacts; it cannot prove phone compatibility, accuracy or demographic fairness.
 
 ## Implemented on this branch
 
 - Kotlin Android app: min SDK 26, compile/target SDK 36, JDK 17, AGP 9.3.0, Gradle 9.5.0.
-- Arabic-first Material 3 UI with Home/Settings destinations, adaptive maximum width, permission state, inference metrics, and locally persisted effect, strength, sensitivity and mask expansion.
+- Arabic-first Material 3 UI with Home, Gallery, Editor and Settings destinations, adaptive maximum width, first-run welcome, permission state, inference metrics, and locally persisted effect, strength, sensitivity and mask expansion. Gallery/editor let the user choose mask-all or an optional face-presentation target policy.
 - Compose UI/Foundation 1.12.1 (stable) with compileSdk 37.
 - Explicit user permission for overlay access and fresh MediaProjection consent for each capture session.
 - A mediaProjection foreground service with persistent notification and immediate stop action.
@@ -31,7 +31,7 @@ The active model is RTMDet-Ins-Tiny from the pinned ONNX conversion repository. 
 
 Source: https://huggingface.co/tori29umai/rtmdet-ins-onnx-person-masks
 
-The model is semantic segmentation, not per-person instance segmentation and not a gender classifier. It may miss small, distant, occluded, stylized, or unusual-content subjects. The converted model card does not declare an explicit license, so legal review is required before any public release; this branch is an evaluation integration, not release approval.
+RTMDet-Tiny provides per-person instance masks but does not itself classify face presentation. It may miss small, distant, occluded, stylized, or unusual-content subjects. The person model and face models are pinned and include upstream license texts; nevertheless, model-use terms and privacy disclosures must be reviewed before public release.
 
 ## Pipeline and constraints
 
@@ -158,7 +158,7 @@ Release gates still open:
 
 The live pipeline holds a previous mask only briefly (250 ms) when the fresh semantic result is effectively empty and dimensions still match. This reduces a single-frame dropout without retaining a stale mask for most of a second, which can cause visible trails when people move. It is a trade-off, not optical-flow tracking; test on real devices before claiming flicker-free operation.
 
-RTMDet-Tiny provides per-person masks but does not classify gender or identity. The app therefore supports explicit per-person selection, not automatic male/female filtering yet. Appearance cues such as hair and clothing are not used as gender proxies. Any future classifier must expose an uncertain state and be evaluated against representative on-device images before controlling privacy policy.
+RTMDet-Tiny provides per-person masks, while the optional YuNet + FastFace path estimates visual face presentation for target policies. The label is not gender identity. Hair/clothing/body-shape cues are never used. A low-confidence/missing face becomes Unknown and remains blurred; a live label needs two high-confidence scans. Users can override the per-track label during the current session, but the correction does not train weights or save face crops.
 
 
 ## Low-latency profile and startup behavior (0.5.3)
@@ -174,13 +174,30 @@ RTMDet-Tiny provides per-person masks but does not classify gender or identity. 
 
 The active model is RTMDet-Ins-Tiny ONNX (~24.03 MB, pinned under Apache-2.0 per the downloaded license and NOTICE). Its repository publishes a 640×640 BGR input with top-left aspect-preserving resize/padding and separate `dets`, `labels`, and per-instance `masks` outputs. The model's published CPU graph checks are CI smoke tests, not phone latency benchmarks. See `docs/model-evaluation.md`.
 
-The model is now bundled at build time from an immutable revision after verifying size and SHA-256, and its Apache license/NOTICE are packaged. Next release gates are physical-device startup, sustained memory/thermal tests, and a labelled screen-frame benchmark; no gender targeting is claimed until a separate compatible face-classifier pipeline is integrated and tested.
+RTMDet-Tiny and the optional face models are bundled at build time from immutable revisions after verifying size and SHA-256; license texts are packaged. Release gates remain physical-device startup, sustained memory/thermal tests, labeled screen-frame recall, face-classification subgroup error rates and false-visible-person rate in each gender-targeted mode.
 
 A pure target-policy utility now specifies the mask-composition behavior for an instance backend: mask all by default, mask only the instances the user selected, or mask all except explicit selections. Empty selection and missing selected tracks are handled conservatively so an uninitialized selector does not silently turn off protection. The current semantic model cannot drive this feature reliably, so no misleading targeting toggle is shown in the UI yet.
 
 
-## Upgrade and model migration (0.6.2)
+## Upgrade and model migration (0.6.2–0.6.3)
 
 The model weights in the app-private cache are version-specific. On first start after upgrading to 0.6.2, the segmenter removes cached RTMDet-S and LR-ASPP files before loading RTMDet-Tiny so obsolete weights do not continue consuming storage. SharedPreferences and target settings are preserved; per-person selections remain session-local by design.
 
 Debug APKs are now signed with a fixed development-only signing identity so successive CI builds can update in place. Android requires one clean reinstall when moving from an APK signed with a different key; afterwards, updates from the stable development signer install over the app without clearing its data. This key must never sign a production release.
+
+
+## Optional face-presentation pipeline (v0.6.3 preview)
+
+1. The user explicitly selects a male-presenting or female-presenting target policy. The extra models remain unloaded for ordinary mask-all use, the Home screen, and general settings.
+2. RTMDet-Ins-Tiny returns per-instance person masks and boxes. The face path uses a pinned YuNet ONNX detector and aligns the five facial landmarks before FastFace-Large-128 inference.
+3. FastFace's binary output is interpreted as a visual presentation estimate only. Live mode samples at most once per 650 ms and requires two consecutive predictions at or above 0.88. Missing, too-small, low-confidence, unassigned, or inconsistent faces become Unknown; the corresponding person mask remains blurred.
+4. The policy mask is composed using instance masks. In male-presenting mode only a high-confidence matching presentation is left visible; female-presenting mode does the converse. The default remains mask-all, and Unknown never becomes visible due to a missing classifier result.
+5. The per-person correction controls override the label for the active session only. They do not save face crops, upload images, recognize people across sessions, or retrain model weights. Still-image editing offers the same target choice; when a gender-target image has no usable person masks, it covers the entire image conservatively.
+6. Still-image editing is disabled while a live screen-capture session is active so the application does not instantiate a second RTMDet model alongside the screen filter and risk exhausting device RAM.
+
+Pinned face artifacts:
+- YuNet model: 232,589 bytes; SHA-256 `8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4`; MIT.
+- FastFace-Large-128: 4,008,918 bytes; SHA-256 `2834e70884800019972e588fbe95eb73ebe942120a364d8aaa60085ba4f5b9cf`; Apache-2.0.
+- Both are loaded on-device through ONNX Runtime CPU. Their published dataset scores are not equivalent to screen-capture accuracy.
+
+There is no 99% accuracy claim. Before release, test recall and false-visible-person rate with labeled held-out screen frames and faces of different sizes, lighting, skin tones, occlusions and camera angles; measure p50/p95 latency, RAM, temperature and battery on actual low-, mid- and high-tier Android devices.
