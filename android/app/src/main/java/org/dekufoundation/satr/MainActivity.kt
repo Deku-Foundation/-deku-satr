@@ -103,6 +103,7 @@ class MainActivity : ComponentActivity() {
     private var mediaBusy by mutableStateOf(false)
     private var mediaMessage by mutableStateOf("اختر صورة لتحليلها محلياً.")
     private var mediaCoverage by mutableIntStateOf(0)
+    private var stillImageTargetMode by mutableStateOf(PersonTargetMode.MASK_ALL)
     private var pendingExportBitmap: Bitmap? = null
     private val mediaExecutor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "SatrMediaProcessor").apply { isDaemon = true } }
     private var unsubscribeStatus: (() -> Unit)? = null
@@ -174,6 +175,8 @@ class MainActivity : ComponentActivity() {
                         mediaBusy = mediaBusy,
                         mediaMessage = mediaMessage,
                         mediaCoverage = mediaCoverage,
+                        stillImageTargetMode = stillImageTargetMode,
+                        onStillImageTargetModeChange = { stillImageTargetMode = it },
                         onPickImage = ::pickImage,
                         onSaveImage = ::saveProcessedImage,
                         showWelcome = showWelcome,
@@ -260,18 +263,39 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun processPickedImage(uri: Uri) {
+        if (snapshot.phase in setOf(SatrPhase.STARTING, SatrPhase.FILTERING, SatrPhase.NO_PERSON_DETECTED, SatrPhase.FAIL_CLOSED)) {
+            mediaMessage = "أوقف جلسة حماية الشاشة قبل تحرير صورة؛ لا نشغّل محركي رؤية كبيرين معاً حتى لا ينفد RAM."
+            return
+        }
         mediaBusy = true
         mediaMessage = "يجري تحليل الصورة على الهاتف…"
         mediaExecutor.execute {
-            val result = runCatching { ImagePrivacyProcessor.process(this, uri, FilterSettings.effect, FilterSettings.blurRadius, FilterSettings.confidenceThreshold, FilterSettings.maskExpansionRadius) }
+            val result = runCatching {
+                ImagePrivacyProcessor.process(
+                    context = this,
+                    uri = uri,
+                    effect = FilterSettings.effect,
+                    blurRadius = FilterSettings.blurRadius,
+                    threshold = FilterSettings.confidenceThreshold,
+                    maskExpansionRadius = FilterSettings.maskExpansionRadius,
+                    targetMode = stillImageTargetMode,
+                )
+            }
             runOnUiThread {
                 mediaBusy = false
                 result.onSuccess { output ->
                     val previous = processedImage
                     processedImage = output.bitmap
                     mediaCoverage = output.coveragePercent
-                    mediaMessage = if (output.coveragePercent > 0) "اكتمل الفحص محلياً. راجع الحواف قبل مشاركة الصورة." else "لم يرصد النموذج شخصاً بوضوح؛ قد تكون الصورة غير مغطاة بالكامل."
-                    if (previous != null && previous !== output.bitmap) uiHandler.postDelayed({ if (processedImage !== previous && !previous.isRecycled) previous.recycle() }, 700L)
+                    mediaMessage = when {
+                        output.usedFailClosedFallback -> "لم تتوفر معلومات كافية لتصنيف الوجوه؛ استُخدمت سياسة طمس محافظة. راجع الصورة قبل مشاركتها."
+                        output.targetModeApplied.requiresGenderPresentation() -> "اكتمل الفحص محلياً. طُمست الوجوه غير الواضحة أو منخفضة الثقة؛ راجع الحواف قبل المشاركة."
+                        output.coveragePercent > 0 -> "اكتمل الفحص محلياً. راجع الحواف قبل مشاركة الصورة."
+                        else -> "لم يرصد النموذج شخصاً بوضوح؛ قد تكون الصورة غير مغطاة بالكامل."
+                    }
+                    if (previous != null && previous !== output.bitmap) {
+                        uiHandler.postDelayed({ if (processedImage !== previous && !previous.isRecycled) previous.recycle() }, 700L)
+                    }
                 }.onFailure { mediaMessage = "تعذر تحليل الصورة. جرّب صورة أوضح؛ لم يُعدّل الملف الأصلي." }
             }
         }
@@ -486,7 +510,8 @@ private fun SatrDashboard(
  onStart:()->Unit, onStop:()->Unit, onUpdateTarget:(PersonTargetMode, Set<Long>)->Unit,
  onUpdatePresentation:(Long, PersonPresentation?)->Unit,
  processedImage:Bitmap?, mediaBusy:Boolean, mediaMessage:String,
- mediaCoverage:Int, onPickImage:()->Unit, onSaveImage:()->Unit,
+ mediaCoverage:Int, stillImageTargetMode:PersonTargetMode, onStillImageTargetModeChange:(PersonTargetMode)->Unit,
+ onPickImage:()->Unit, onSaveImage:()->Unit,
  showWelcome:Boolean, onWelcomeDone:()->Unit, onOpenSource:()->Unit,
 ) {
  val running=snapshot.phase in setOf(SatrPhase.STARTING,SatrPhase.FILTERING,SatrPhase.NO_PERSON_DETECTED,SatrPhase.FAIL_CLOSED)
@@ -520,7 +545,9 @@ private fun SatrDashboard(
        Text("المعرض",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
        Text("افحص صورة تختارها بنفسك. المعالجة محلية ولا تستبدل الملف الأصلي.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
        MediaPreviewCard(processedImage,mediaBusy,mediaMessage,mediaCoverage)
-       Button(onClick=onPickImage,modifier=Modifier.fillMaxWidth().heightIn(min=52.dp),shape=RoundedCornerShape(16.dp)){Text("اختيار صورة")}
+        ImageTargetModeCard(stillImageTargetMode, onStillImageTargetModeChange)
+        if (running) Text("أوقف جلسة حماية الشاشة قبل تحرير صورة لتجنّب تشغيل نموذجَي رؤية في الوقت نفسه.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+       Button(onClick=onPickImage,enabled=!running&&!mediaBusy,modifier=Modifier.fillMaxWidth().heightIn(min=52.dp),shape=RoundedCornerShape(16.dp)){Text("اختيار صورة")}
        OutlinedButton(onClick={selectedTab=2},modifier=Modifier.fillMaxWidth().heightIn(min=52.dp),shape=RoundedCornerShape(16.dp)){Text("فتح المحرر")}
        OutlinedButton(onClick=onStart,modifier=Modifier.fillMaxWidth().heightIn(min=52.dp),shape=RoundedCornerShape(16.dp)){Text("حماية الفيديو والمحتوى أثناء العرض")}
        Text("تُفلتر الفيديوهات والتطبيقات الأخرى أثناء عرضها عبر جلسة حماية الشاشة. اختيار صورة هنا للتحرير المنفصل.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -529,8 +556,10 @@ private fun SatrDashboard(
        Text("المحرر",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
        Text("اختر صورة، عاين النتيجة، ثم احفظ نسخة في موقع تختاره. يبقى الأصل دون تغيير.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
        MediaPreviewCard(processedImage,mediaBusy,mediaMessage,mediaCoverage)
+        ImageTargetModeCard(stillImageTargetMode, onStillImageTargetModeChange)
+        if (running) Text("أوقف جلسة حماية الشاشة قبل تحرير صورة لتجنّب تشغيل نموذجَي رؤية في الوقت نفسه.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
        Row(horizontalArrangement=Arrangement.spacedBy(10.dp),modifier=Modifier.fillMaxWidth()){
-        Button(onClick=onPickImage,modifier=Modifier.weight(1f).heightIn(min=52.dp),shape=RoundedCornerShape(16.dp)){Text("اختيار صورة")}
+        Button(onClick=onPickImage,enabled=!running&&!mediaBusy,modifier=Modifier.weight(1f).heightIn(min=52.dp),shape=RoundedCornerShape(16.dp)){Text("اختيار صورة")}
         OutlinedButton(onClick=onSaveImage,enabled=processedImage!=null&&!mediaBusy,modifier=Modifier.weight(1f).heightIn(min=52.dp),shape=RoundedCornerShape(16.dp)){Text("حفظ نسخة")}
        }
        FilterSettingsCard(effect,{effectName=it.name;FilterSettings.effect=it;onSaveFilterSettings()},blurStrength,{blurStrength=it;FilterSettings.blurStrengthPercent=it.roundToInt()},confidenceThreshold,{confidenceThreshold=it;FilterSettings.confidenceThreshold=it},maskExpansion,{maskExpansion=it;FilterSettings.maskExpansionRadius=it.roundToInt()},onSaveFilterSettings){
@@ -626,6 +655,39 @@ private fun MediaPreviewCard(bitmap:Bitmap?,busy:Boolean,message:String,coverage
    Text(message,style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
   }
  }
+}
+
+@Composable
+private fun ImageTargetModeCard(
+    targetMode: PersonTargetMode,
+    onChange: (PersonTargetMode) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("من تريد إظهاره في الصورة؟", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            listOf(
+                PersonTargetMode.MASK_ALL to "طمس الجميع",
+                PersonTargetMode.SHOW_MALE_PRESENTING_ONLY to "إبقاء الرجال ظاهرين",
+                PersonTargetMode.SHOW_FEMALE_PRESENTING_ONLY to "إبقاء النساء ظاهرات",
+            ).forEach { (mode, label) ->
+                if (targetMode == mode) {
+                    Button(onClick = { onChange(mode) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(14.dp)) { Text(label) }
+                } else {
+                    OutlinedButton(onClick = { onChange(mode) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(14.dp)) { Text(label) }
+                }
+            }
+            Text(
+                "التقدير مبني على وجه واضح لا على الشعر أو الملابس. الوجه غير المكتشف أو منخفض الثقة يبقى مطموماً. هذه السمة تقدّر المظهر المرئي ولا تحدد الهوية الجندرية.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                lineHeight = 19.sp,
+            )
+        }
+    }
 }
 
 @Composable
