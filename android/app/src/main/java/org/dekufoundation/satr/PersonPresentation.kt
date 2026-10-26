@@ -26,7 +26,7 @@ data class StablePersonPresentation(
 
 /**
  * Requires repeated high-confidence predictions before applying a presentation label.
- * A recent label is retained briefly to bridge one missed face frame, then returns to UNKNOWN.
+ * Missing or low-confidence faces clear the active label immediately.
  */
 internal class PersonPresentationStabilizer(
     private val minimumConfidence: Float = MINIMUM_CONFIDENCE,
