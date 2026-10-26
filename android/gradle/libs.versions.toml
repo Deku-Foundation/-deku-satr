@@ -5,7 +5,6 @@ activityCompose = "1.13.0"
 composeFoundation = "1.11.4"
 composeMaterial3 = "1.4.0"
 composeUi = "1.11.4"
-litertInterpreter = "1.4.2"
 onnxruntimeAndroid = "1.31.0"
 junit = "4.13.2"
 
@@ -20,6 +19,5 @@ compose-foundation = { module = "androidx.compose.foundation:foundation", versio
 compose-material3 = { module = "androidx.compose.material3:material3", version.ref = "composeMaterial3" }
 compose-ui = { module = "androidx.compose.ui:ui", version.ref = "composeUi" }
 compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview", version.ref = "composeUi" }
-litert-interpreter = { module = "com.google.ai.edge.litert:litert", version.ref = "litertInterpreter" }
 onnxruntime-android = { module = "com.microsoft.onnxruntime:onnxruntime-android", version.ref = "onnxruntimeAndroid" }
 junit = { module = "junit:junit", version.ref = "junit" }

@@ -5,7 +5,7 @@ import android.content.SharedPreferences
 import kotlin.math.roundToInt
 
 enum class PrivacyEffect { BLUR, PIXELATE, COVER }
-enum class PersonModelProfile { FAST_SEMANTIC, RTMDET_INS_S }
+enum class PersonModelProfile { RTMDET_INS_TINY }
 enum class ProcessingProfile(val maxEdge: Int, val frameIntervalMs: Long, val tileWideFrames: Boolean) {
     LOW_LATENCY(360, 80L, false),
     POWER_SAVER(480, 200L, false),
@@ -30,7 +30,7 @@ object FilterSettings {
     var effect: PrivacyEffect = PrivacyEffect.BLUR
 
     @Volatile
-    var personModelProfile: PersonModelProfile = PersonModelProfile.FAST_SEMANTIC
+    var personModelProfile: PersonModelProfile = PersonModelProfile.RTMDET_INS_TINY
 
     /** Instance target and track IDs are session-local and are never restored from disk. */
     @Volatile
@@ -77,7 +77,7 @@ object FilterSettings {
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         preferences = prefs
         effect = runCatching { PrivacyEffect.valueOf(prefs.getString("privacy_effect", PrivacyEffect.BLUR.name) ?: PrivacyEffect.BLUR.name) }.getOrDefault(PrivacyEffect.BLUR)
-        personModelProfile = runCatching { PersonModelProfile.valueOf(prefs.getString("person_model_profile", PersonModelProfile.FAST_SEMANTIC.name) ?: PersonModelProfile.FAST_SEMANTIC.name) }.getOrDefault(PersonModelProfile.FAST_SEMANTIC)
+        personModelProfile = runCatching { PersonModelProfile.valueOf(prefs.getString("person_model_profile", PersonModelProfile.RTMDET_INS_TINY.name) ?: PersonModelProfile.RTMDET_INS_TINY.name) }.getOrDefault(PersonModelProfile.RTMDET_INS_TINY)
         personTargetMode = PersonTargetMode.MASK_ALL
         selectedPersonTrackIds = emptySet()
         processingProfile = runCatching { ProcessingProfile.valueOf(prefs.getString("processing_profile", ProcessingProfile.BALANCED.name) ?: ProcessingProfile.BALANCED.name) }.getOrDefault(ProcessingProfile.BALANCED)
@@ -88,7 +88,7 @@ object FilterSettings {
 
     fun resetToDefaults() {
         effect = PrivacyEffect.BLUR
-        personModelProfile = PersonModelProfile.FAST_SEMANTIC
+        personModelProfile = PersonModelProfile.RTMDET_INS_TINY
         personTargetMode = PersonTargetMode.MASK_ALL
         selectedPersonTrackIds = emptySet()
         processingProfile = ProcessingProfile.BALANCED

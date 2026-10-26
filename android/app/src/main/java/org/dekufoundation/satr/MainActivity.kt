@@ -486,8 +486,6 @@ private fun SatrDashboard(
  var maskExpansion by rememberSaveable { mutableFloatStateOf(FilterSettings.maskExpansionRadius.toFloat()) }
  var effectName by rememberSaveable { mutableStateOf(FilterSettings.effect.name) }
  var profileName by rememberSaveable { mutableStateOf(FilterSettings.processingProfile.name) }
- var modelProfileName by rememberSaveable { mutableStateOf(FilterSettings.personModelProfile.name) }
- val modelProfile=runCatching { PersonModelProfile.valueOf(modelProfileName) }.getOrDefault(PersonModelProfile.FAST_SEMANTIC)
  val effect=runCatching { PrivacyEffect.valueOf(effectName) }.getOrDefault(PrivacyEffect.BLUR)
  val profile=runCatching { ProcessingProfile.valueOf(profileName) }.getOrDefault(ProcessingProfile.BALANCED)
  val scrollState=rememberScrollState()
@@ -526,23 +524,23 @@ private fun SatrDashboard(
         OutlinedButton(onClick=onSaveImage,enabled=processedImage!=null&&!mediaBusy,modifier=Modifier.weight(1f).heightIn(min=52.dp),shape=RoundedCornerShape(16.dp)){Text("حفظ نسخة")}
        }
        FilterSettingsCard(effect,{effectName=it.name;FilterSettings.effect=it;onSaveFilterSettings()},blurStrength,{blurStrength=it;FilterSettings.blurStrengthPercent=it.roundToInt()},confidenceThreshold,{confidenceThreshold=it;FilterSettings.confidenceThreshold=it},maskExpansion,{maskExpansion=it;FilterSettings.maskExpansionRadius=it.roundToInt()},onSaveFilterSettings){
-        FilterSettings.resetToDefaults();blurStrength=FilterSettings.blurStrengthPercent.toFloat();confidenceThreshold=FilterSettings.confidenceThreshold;maskExpansion=FilterSettings.maskExpansionRadius.toFloat();effectName=FilterSettings.effect.name;profileName=FilterSettings.processingProfile.name;modelProfileName=FilterSettings.personModelProfile.name;onSaveFilterSettings()
+        FilterSettings.resetToDefaults();blurStrength=FilterSettings.blurStrengthPercent.toFloat();confidenceThreshold=FilterSettings.confidenceThreshold;maskExpansion=FilterSettings.maskExpansionRadius.toFloat();effectName=FilterSettings.effect.name;profileName=FilterSettings.processingProfile.name;onSaveFilterSettings()
        }
       }
       else -> {
        Text("الإعدادات",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
        Text("اختر التوازن بين سرعة المعالجة وتفاصيل القناع. حجم الالتقاط يُطبّق عند بدء جلسة جديدة.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
        ProcessingProfileCard(profile){profileName=it.name;FilterSettings.processingProfile=it;onSaveFilterSettings()}
-       PersonModelCard(modelProfile){ modelProfileName=it.name; FilterSettings.personModelProfile=it; onSaveFilterSettings() }
+        PersonModelCard()
        PersonTargetControls(snapshot, onUpdateTarget)
        FilterSettingsCard(effect,{effectName=it.name;FilterSettings.effect=it;onSaveFilterSettings()},blurStrength,{blurStrength=it;FilterSettings.blurStrengthPercent=it.roundToInt()},confidenceThreshold,{confidenceThreshold=it;FilterSettings.confidenceThreshold=it},maskExpansion,{maskExpansion=it;FilterSettings.maskExpansionRadius=it.roundToInt()},onSaveFilterSettings){
-        FilterSettings.resetToDefaults();blurStrength=FilterSettings.blurStrengthPercent.toFloat();confidenceThreshold=FilterSettings.confidenceThreshold;maskExpansion=FilterSettings.maskExpansionRadius.toFloat();effectName=FilterSettings.effect.name;profileName=FilterSettings.processingProfile.name;modelProfileName=FilterSettings.personModelProfile.name;onSaveFilterSettings()
+        FilterSettings.resetToDefaults();blurStrength=FilterSettings.blurStrengthPercent.toFloat();confidenceThreshold=FilterSettings.confidenceThreshold;maskExpansion=FilterSettings.maskExpansionRadius.toFloat();effectName=FilterSettings.effect.name;profileName=FilterSettings.processingProfile.name;onSaveFilterSettings()
        }
        PermissionsCard(overlayAllowed,notificationsAllowed,onGrantOverlay,onOpenNotificationSettings)
-       ModelCard(snapshot, modelProfile);SafetyCard();HowItWorksCard()
+       ModelCard(snapshot);SafetyCard();HowItWorksCard()
       }
      }
-     Text("ستر بلور · SATR BLUR · من Deku Foundation · إصدار تجريبي 0.6.1",modifier=Modifier.fillMaxWidth().padding(top=4.dp),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,textAlign=TextAlign.Center)
+     Text("ستر بلور · SATR BLUR · من Deku Foundation · إصدار تجريبي 0.6.2",modifier=Modifier.fillMaxWidth().padding(top=4.dp),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,textAlign=TextAlign.Center)
     }
    }
   }
@@ -1057,7 +1055,7 @@ private fun FilterSettingsCard(
 }
 
 @Composable
-private fun PersonModelCard(profile: PersonModelProfile, onChange: (PersonModelProfile) -> Unit) {
+private fun PersonModelCard() {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
@@ -1065,26 +1063,19 @@ private fun PersonModelCard(profile: PersonModelProfile, onChange: (PersonModelP
     ) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("نموذج الرصد", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text("اختر النموذج قبل بدء الجلسة. يتطلب تغيير النموذج إيقاف الجلسة ثم بدءها من جديد.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            listOf(
-                PersonModelProfile.FAST_SEMANTIC to "خفيف — LR-ASPP",
-                PersonModelProfile.RTMDET_INS_S to "تقسيم منفصل للأشخاص — RTMDet-Ins-S",
-            ).forEach { (option, label) ->
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text(label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            if (option == PersonModelProfile.FAST_SEMANTIC) "نموذج صغير يقارب 3.52 MB؛ يطمس الأشخاص كقناع واحد."
-                            else "نحو 43.2 MB؛ ينتج أقنعة منفصلة ويستهلك معالجة أكثر من النموذج الخفيف.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    if (profile == option) StatusPill("محدد", MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
-                    else OutlinedButton(onClick = { onChange(option) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("اختيار") }
-                }
-            }
-            Text("لا يصنّف أيّ من النموذجين الجنس. لا يُستخدم طول الشعر أو اللباس للتخمين؛ استخدم الاختيار اليدوي أدناه.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 19.sp)
+            Text(
+                "النموذج الأساسي: RTMDet-Ins-Tiny (24.03 MB). يولّد قناعاً مستقلاً لكل شخص ويعمل على الجهاز.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                lineHeight = 21.sp,
+            )
+            StatusPill("RTMDet-Tiny محدد", MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
+            Text(
+                "لا يُحمّل عند فتح الإعدادات؛ يبدأ تحميله داخل خدمة الجلسة. يستخدم مسار CPU الموثوق بدلاً من NNAPI، ويعرض خطأً واضحاً إذا تعذّر التحميل.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                lineHeight = 20.sp,
+            )
         }
     }
 }
@@ -1111,7 +1102,7 @@ private fun PersonTargetControls(
                 container = MaterialTheme.colorScheme.primaryContainer,
                 foreground = MaterialTheme.colorScheme.onPrimaryContainer,
             )
-            Text("ابدأ جلسة باستخدام RTMDet-Ins-S لتظهر الأشخاص المكتشفون. حدّد من تريد طمسه أو استثناؤه؛ يتغير القناع في الجلسة الحالية فقط.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 21.sp)
+            Text("ابدأ جلسة باستخدام RTMDet-Ins-Tiny لتظهر الأشخاص المكتشفون. حدّد من تريد طمسه أو استثناؤه؛ يتغير القناع في الجلسة الحالية فقط.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 21.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(onClick = { onUpdateTarget(PersonTargetMode.MASK_ALL, emptySet()) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("طمس الجميع") }
                 OutlinedButton(
@@ -1125,9 +1116,7 @@ private fun PersonTargetControls(
                 enabled = selected.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             ) { Text("طمس الجميع عدا المحدد") }
-            if (snapshot.personModelProfile != PersonModelProfile.RTMDET_INS_S) {
-                Text("الاختيار الفردي غير متاح في النموذج الخفيف. اختر RTMDet-Ins-S ثم أعد تشغيل جلسة الحماية.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else if (snapshot.detectedPeople.isEmpty()) {
+             if (snapshot.detectedPeople.isEmpty()) {
                 Text("لم تُرصد أشخاص في الإطار الحالي بعد. افتح محتوى تظهر فيه أشخاص وانتظر ظهور القائمة.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 Text("الأشخاص المرصودون", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
@@ -1251,7 +1240,7 @@ private fun PermissionLine(
 }
 
 @Composable
-private fun ModelCard(snapshot: SatrSessionSnapshot, profile: PersonModelProfile) {
+private fun ModelCard(snapshot: SatrSessionSnapshot) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
@@ -1273,21 +1262,21 @@ private fun ModelCard(snapshot: SatrSessionSnapshot, profile: PersonModelProfile
                 }
                 Spacer(Modifier.width(11.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("نموذج الأشخاص", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(if (profile == PersonModelProfile.FAST_SEMANTIC) "LiteRT · LR-ASPP + MobileNetV3-Large" else "ONNX Runtime · RTMDet-Ins-S", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("نموذج تقسيم الأشخاص", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("ONNX Runtime · RTMDet-Ins-Tiny", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 StatusPill(
-                    label = if (snapshot.modelReady) "جاهز" else "مضمّن",
+                    label = if (snapshot.modelReady) "جاهز" else "يُحمّل عند البدء",
                     container = MaterialTheme.colorScheme.surfaceVariant,
                     foreground = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
-                StatusPill("يعمل دون اتصال", MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
-                StatusPill("نسخة تجريبية", MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant)
+                StatusPill("محلي بالكامل", MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
+                StatusPill("نحو 24 MB", MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(
-                if (profile == PersonModelProfile.FAST_SEMANTIC) "النموذج الخفيف بحجم يقارب 3.52 MB؛ يطمس الأشخاص كقناع واحد. يُنزّل أثناء البناء ويتحقق من SHA-256، ولا يحتاج اتصالاً بالإنترنت وقت التشغيل." else "نموذج تقسيم الأشخاص إلى أقنعة منفصلة؛ حجمه نحو 43.2 MB ويحتاج معالجة أكثر من النموذج الخفيف. يُضمّن أثناء البناء بعد التحقق من SHA-256، ولا يحتاج اتصالاً بالإنترنت وقت التشغيل.",
+                "يولّد أقنعة منفصلة للأشخاص لتسمح بالاختيار اليدوي. يُنزّل الوزن المثبّت ويتحقق البناء من SHA-256 قبل تضمينه؛ لا يحتاج التطبيق إلى الإنترنت أثناء التشغيل. الأداء والدقة ما زالا يحتاجان اختباراً على أجهزة حقيقية.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 lineHeight = 20.sp,
@@ -1318,7 +1307,7 @@ private fun SafetyCard() {
                 Text("حدود النموذج", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFF613E00))
             }
             Text(
-                "النموذج الخفيف ينتج قناعاً مشتركاً للأشخاص، أما نموذج RTMDet-Ins-S فينتج أقنعة منفصلة لكنه أكبر وأثقل. قد يفوّت كلاهما الأشخاص الصغار أو البعيدين أو المحجوبين. لا يمكن اعتبار التغطية كاملة قبل اختبارات أجهزة حقيقية؛ وقد يمنع Android التقاط بعض النوافذ الآمنة أو فيديو DRM.",
+                "RTMDet-Ins-Tiny ينتج أقنعة منفصلة للأشخاص، لكنه قد يفوّت الأشخاص الصغار أو البعيدين أو المحجوبين. لا يمكن اعتبار التغطية كاملة قبل اختبارات أجهزة حقيقية؛ وقد يمنع Android التقاط بعض النوافذ الآمنة أو فيديو DRM.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color(0xFF613E00),
                 lineHeight = 22.sp,

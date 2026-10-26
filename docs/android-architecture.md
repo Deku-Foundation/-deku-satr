@@ -1,6 +1,6 @@
 # Native Android architecture
 
-Updated: 2026-10-25. Version 0.5.1 switches the live and still-image paths to a pinned LiteRT/TFLite LR-ASPP + MobileNetV3-Large semantic person segmenter. This is an experimental model integration; Android/OEM behavior remains unvalidated outside hosted CI. Android/OEM behavior remains unvalidated outside GitHub-hosted build tests.
+Updated: 2026-10-26. Version 0.6.2 removes the former LR-ASPP backend and uses a pinned RTMDet-Ins-Tiny ONNX instance-segmentation model for both live frames and still images. Model load is deferred to the foreground service or image-processing worker, ONNX Runtime is configured for CPU only, and the previous RTMDet-S cache file is deleted during migration. Hosted CI can validate compilation and model artifact integrity; it cannot prove phone compatibility or production accuracy.
 
 ## Implemented on this branch
 
@@ -10,8 +10,8 @@ Updated: 2026-10-25. Version 0.5.1 switches the live and still-image paths to a 
 - Explicit user permission for overlay access and fresh MediaProjection consent for each capture session.
 - A mediaProjection foreground service with persistent notification and immediate stop action.
 - A touch-pass-through transparent full-screen filter overlay and a separate draggable status/stop panel.
-- LiteRT/TFLite Interpreter 1.4.2 with LR-ASPP + MobileNetV3-Large dynamic weight-only INT8 weights and FP32 activations. Gradle downloads the model from an immutable Hugging Face revision and verifies SHA-256 before packaging; there is no runtime model download.
-- Frames are bounded by the selected capture profile, use a two-image ImageReader and one in-flight inference job. Frames are dropped rather than queued while inference is busy. LR-ASPP returns a semantic 21-class tensor; VOC class index 15 is treated as person and converted to a person confidence map.
+- ONNX Runtime Android 1.31.0 with RTMDet-Ins-Tiny (24,032,356 bytes). Gradle downloads the Apache-2.0 model at immutable revision `e5218e8d47d7c50077f27f9893a28e0ef2ad5656`, checks SHA-256, and includes the LICENSE/NOTICE; there is no runtime weight download.
+- Frames are bounded by the selected capture profile, use a two-image ImageReader and one in-flight inference job. Frames are dropped rather than queued while inference is busy. RTMDet-Tiny returns separate person masks, enabling manual per-person selection. The session begins with conservative mask-all behavior.
 - A CPU two-pass box blur, block pixelation or solid cover clipped to a thresholded/dilated person mask. Replaced bitmaps are released after a short delay to avoid recycling during rendering. Failed inference triggers an opaque fail-closed overlay while the user-accessible stop panel remains visible.
 - Unit tests for capture scaling, mask thresholding, dilation, and coverage. Android CI builds a debug APK and checks that the merged manifest does not include INTERNET permission.
 
@@ -27,9 +27,9 @@ Official release notes:
 
 ## Model choice
 
-The active candidate is LiteRT/TFLite LR-ASPP + MobileNetV3-Large, sourced from the LiteRT Community conversion of TorchVision's LR-ASPP model. The dynamic weight-only INT8 artifact is approximately 3.52 MB and is pinned by revision and SHA-256. The implementation introspects input/output tensor layouts and rejects unexpected shapes rather than guessing. These facts do not establish accuracy or speed on Satr's captured frames.
+The active model is RTMDet-Ins-Tiny from the pinned ONNX conversion repository. It is approximately 24.03 MB and produces per-instance masks, enabling selection of tracks in the current session. The Android adapter verifies file size and SHA-256, validates the input tensor shape, and rejects unexpected output layouts. The ONNX runtime is CPU-only: the exporter documents CPU execution, so the app no longer attempts NNAPI initialization. The tiny variant was selected over RTMDet-Ins-S to reduce shipped weight size and load pressure; this is not evidence of higher accuracy on phones.
 
-Source: https://huggingface.co/litert-community/lraspp_mobilenet_v3_large
+Source: https://huggingface.co/tori29umai/rtmdet-ins-onnx-person-masks
 
 The model is semantic segmentation, not per-person instance segmentation and not a gender classifier. It may miss small, distant, occluded, stylized, or unusual-content subjects. The converted model card does not declare an explicit license, so legal review is required before any public release; this branch is an evaluation integration, not release approval.
 
@@ -142,7 +142,7 @@ References:
 
 ## Version 0.5.1 model migration
 
-The active Android model is LR-ASPP + MobileNetV3-Large through LiteRT/TFLite Interpreter 1.4.2. The build fetches the dynamic weight-only INT8 / FP32-activation artifact from immutable revision `ac7d12fd05b7542cd884c85968b3193c8f8e4fa7`, verifies SHA-256 `1a0a31a925f1c8e2abb76e96c4bd4bdcbc625f8389f1029530007fded4ea9ed9`, and packages it into generated APK assets. The app itself performs no model network access.
+Superseded in v0.6.2: the former LR-ASPP/LiteRT artifact and dependency were removed from the Android package. The app now packages only the pinned RTMDet-Ins-Tiny instance model and runs it through ONNX Runtime CPU. The APK performs no model network access.
 
 Input/output tensor layouts are inspected at runtime. The implementation normalizes RGB with ImageNet mean/std, letterboxes to the model input, reads the 21-class output and uses VOC person class 15. The output is a shared semantic mask: it cannot tell which mask belongs to which person and cannot infer gender. NNAPI is requested with a three-thread CPU fallback path; actual acceleration varies by device.
 
@@ -158,7 +158,7 @@ Release gates still open:
 
 The live pipeline holds a previous mask only briefly (250 ms) when the fresh semantic result is effectively empty and dimensions still match. This reduces a single-frame dropout without retaining a stale mask for most of a second, which can cause visible trails when people move. It is a trade-off, not optical-flow tracking; test on real devices before claiming flicker-free operation.
 
-The current LR-ASPP output is a single semantic mask for the person class. It cannot provide per-person controls or gender categories. Selective policies require a separately licensed instance-segmentation backend and explicit user-selected target labels; visual gender inference from hair/clothing is not implemented. See the model evaluation decision and its licensing notes.
+RTMDet-Tiny provides per-person masks but does not classify gender or identity. The app therefore supports explicit per-person selection, not automatic male/female filtering yet. Appearance cues such as hair and clothing are not used as gender proxies. Any future classifier must expose an uncertain state and be evaluated against representative on-device images before controlling privacy policy.
 
 
 ## Low-latency profile and startup behavior (0.5.3)
@@ -172,8 +172,15 @@ The current LR-ASPP output is a single semantic mask for the person class. It ca
 
 ## Next model candidate: per-instance masks
 
-The current shipping model is LR-ASPP + MobileNetV3-Large, which provides a union/semantic person map. For user-selective person targets, the source-based candidate is RTMDet-Ins-S ONNX (~41 MB, Apache-2.0, COCO mask mAP 38.7); RTMDet-Ins-Tiny (~23 MB, mask mAP 35.4) is the compact alternative. Its repository publishes a 640×640 BGR input with aspect-preserving resize/padding and separate `dets`, `labels`, and per-instance `masks` outputs. See the model card in `docs/model-evaluation.md`.
+The active model is RTMDet-Ins-Tiny ONNX (~24.03 MB, pinned under Apache-2.0 per the downloaded license and NOTICE). Its repository publishes a 640×640 BGR input with top-left aspect-preserving resize/padding and separate `dets`, `labels`, and per-instance `masks` outputs. The model's published CPU graph checks are CI smoke tests, not phone latency benchmarks. See `docs/model-evaluation.md`.
 
-The model file has not been bundled yet. Before adding it to the build, pin the exact Hugging Face revision and SHA-256, include the Apache license/NOTICE, measure packaged size, and verify ONNX Runtime Android compatibility on the target ABIs. Do not fetch an unpinned `main` model or download weights at runtime. Only then should the user-selectable per-person mask UI be enabled.
+The model is now bundled at build time from an immutable revision after verifying size and SHA-256, and its Apache license/NOTICE are packaged. Next release gates are physical-device startup, sustained memory/thermal tests, and a labelled screen-frame benchmark; no gender targeting is claimed until a separate compatible face-classifier pipeline is integrated and tested.
 
 A pure target-policy utility now specifies the mask-composition behavior for an instance backend: mask all by default, mask only the instances the user selected, or mask all except explicit selections. Empty selection and missing selected tracks are handled conservatively so an uninitialized selector does not silently turn off protection. The current semantic model cannot drive this feature reliably, so no misleading targeting toggle is shown in the UI yet.
+
+
+## Upgrade and model migration (0.6.2)
+
+The model weights in the app-private cache are version-specific. On first start after upgrading to 0.6.2, the segmenter removes cached RTMDet-S and LR-ASPP files before loading RTMDet-Tiny so obsolete weights do not continue consuming storage. SharedPreferences and target settings are preserved; per-person selections remain session-local by design.
+
+Debug APKs are now signed with a fixed development-only signing identity so successive CI builds can update in place. Android requires one clean reinstall when moving from an APK signed with a different key; afterwards, updates from the stable development signer install over the app without clearing its data. This key must never sign a production release.

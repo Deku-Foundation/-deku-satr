@@ -19,7 +19,7 @@ A checked box means code or documentation has been added; it does not mean devic
 - [x] Use stream mode with a raw-size confidence mask mapped to the reduced screen frame.
 - [x] Add confidence thresholding and mask dilation tests.
 - [ ] Benchmark the current model against real app screenshots with small, distant, occluded, and moving people.
-- [ ] Compare a compact LiteRT semantic person segmenter on the same labelled dataset.
+- [ ] Benchmark the active RTMDet-Ins-Tiny instance-segmentation model on a labelled phone-screen dataset; compare recall, boundary leakage, p50/p95 latency, peak RAM, sustained heat and battery on low-, mid- and high-tier Android devices.
 - [ ] Record license/model provenance, p50/p95 latency, recall, boundary leakage, false-positive area, RAM, heat, battery, and APK size.
 - [ ] Decide whether a general semantic model is required before any public release.
 
@@ -71,3 +71,11 @@ A checked box means code or documentation has been added; it does not mean devic
 - [x] Use ML Kit raw-size masks and confidence threshold controls.
 - [x] Centralize Android dependency pins in a Gradle version catalog.
 - [ ] Verify install, overlay behavior and battery/thermal performance on physical low-end and high-density devices.
+
+
+## Current Android model path (v0.6.2)
+
+- The only bundled model is RTMDet-Ins-Tiny ONNX (~24.03 MB), pinned to an immutable revision and verified by SHA-256 during Gradle builds.
+- The previous LR-ASPP/LiteRT semantic model and the larger RTMDet-Ins-S model were removed from the shipped APK. RTMDet runs via ONNX Runtime CPU, two intra-op threads; NNAPI startup was removed to reduce device-specific initialization risk.
+- Per-person target correction is manual and session-local. Gender-targeted policies remain blocked on a separate face detector/alignment + classifier evaluation, an explicit Unknown state, and user correction tests. Hair/clothing heuristics are not acceptable substitutes.
+- Debug APKs use a fixed development-only signing identity for in-place CI upgrades. One clean reinstall may be required when transitioning from an older artifact signed with a different key; never use this key for a production release.

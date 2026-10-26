@@ -1,12 +1,29 @@
 import java.io.File
 import java.net.URL
 import java.security.MessageDigest
+import java.util.Base64
 import org.gradle.api.GradleException
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+}
+
+
+// Stable, development-only signer lets successive CI debug APKs update in place.
+// Never use this public key for a production/release build.
+val stableDebugKeystore = layout.buildDirectory.file("signing/satr-dev-debug.keystore")
+val prepareStableDebugKeystore by tasks.registering {
+    val encodedKey = layout.projectDirectory.file("ci-signing/satr-dev-debug.keystore.b64").asFile
+    inputs.file(encodedKey)
+    outputs.file(stableDebugKeystore)
+    doLast {
+        val output = stableDebugKeystore.get().asFile
+        output.parentFile.mkdirs()
+        val encoded = encodedKey.readText().filterNot(Char::isWhitespace)
+        output.writeBytes(Base64.getDecoder().decode(encoded))
+    }
 }
 
 android {
@@ -17,12 +34,25 @@ android {
         applicationId = "org.dekufoundation.satr"
         minSdk = 26
         targetSdk = 36
-        versionCode = 12
-        versionName = "0.6.1"
+        versionCode = 13
+        versionName = "0.6.2"
         testInstrumentationRunner = "android.test.InstrumentationTestRunner"
     }
 
+    signingConfigs {
+        create("stableDev") {
+            storeFile = stableDebugKeystore.get().asFile
+            storeType = "JKS"
+            storePassword = "satr-dev-only-2026"
+            keyAlias = "satr-debug"
+            keyPassword = "satr-dev-only-2026"
+        }
+    }
+
     buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("stableDev")
+        }
         release {
             // Keep shrinking off until a signed release build is independently verified.
             isMinifyEnabled = false
@@ -51,60 +81,11 @@ kotlin {
 }
 
 
-val lrasppModelFile = layout.buildDirectory.file(
-    "generated/lrasppAssets/lraspp_mobilenet_v3_large_dynamic_wi8_afp32.tflite",
-)
-android.sourceSets.getByName("main").assets.srcDir(
-    layout.buildDirectory.dir("generated/lrasppAssets").get().asFile,
-)
-
-val downloadLrasppModel by tasks.registering {
-    outputs.file(lrasppModelFile)
-    outputs.upToDateWhen { false }
-    doLast {
-        val output = lrasppModelFile.get().asFile
-        fun digest(file: java.io.File): String {
-            val md = MessageDigest.getInstance("SHA-256")
-            file.inputStream().use { stream ->
-                val bytes = ByteArray(16 * 1024)
-                while (true) {
-                    val read = stream.read(bytes)
-                    if (read < 0) break
-                    md.update(bytes, 0, read)
-                }
-            }
-            return md.digest().joinToString("") { "%02x".format(it) }
-        }
-        if (output.isFile && digest(output) == "1a0a31a925f1c8e2abb76e96c4bd4bdcbc625f8389f1029530007fded4ea9ed9") {
-            return@doLast
-        }
-        output.parentFile.mkdirs()
-        val temporary = File(output.parentFile, output.name + ".download")
-        try {
-            URL("https://huggingface.co/litert-community/lraspp_mobilenet_v3_large/resolve/ac7d12fd05b7542cd884c85968b3193c8f8e4fa7/lraspp_mobilenet_v3_large_dynamic_wi8_afp32.tflite")
-                .openConnection()
-                .apply {
-                    connectTimeout = 20_000
-                    readTimeout = 90_000
-                }
-                .getInputStream()
-                .use { input -> temporary.outputStream().use { outputStream -> input.copyTo(outputStream) } }
-            val actual = digest(temporary)
-            if (actual != "1a0a31a925f1c8e2abb76e96c4bd4bdcbc625f8389f1029530007fded4ea9ed9") {
-                throw GradleException("LR-ASPP model checksum mismatch: $actual")
-            }
-            if (output.exists() && !output.delete()) throw GradleException("Cannot replace the stale LR-ASPP model.")
-            if (!temporary.renameTo(output)) throw GradleException("Cannot install the downloaded LR-ASPP model.")
-        } finally {
-            temporary.delete()
-        }
-    }
-}
-tasks.named("preBuild").configure { dependsOn(downloadLrasppModel) }
+tasks.named("preBuild").configure { dependsOn(prepareStableDebugKeystore) }
 
 val rtmdetAssetsDirectory = layout.buildDirectory.dir("generated/rtmdetAssets")
 android.sourceSets.getByName("main").assets.srcDir(rtmdetAssetsDirectory.get().asFile)
-val rtmdetModelFile = rtmdetAssetsDirectory.map { it.file("rtmdet-ins_s_640x640.onnx") }
+val rtmdetModelFile = rtmdetAssetsDirectory.map { it.file("rtmdet-ins_tiny_640x640.onnx") }
 val rtmdetLicenseFile = rtmdetAssetsDirectory.map { it.file("RTMDET_INS_LICENSE") }
 val rtmdetNoticeFile = rtmdetAssetsDirectory.map { it.file("RTMDET_INS_NOTICE.md") }
 
@@ -116,6 +97,8 @@ val downloadRtmdetAssets by tasks.registering {
         val license = rtmdetLicenseFile.get().asFile
         val notice = rtmdetNoticeFile.get().asFile
         model.parentFile.mkdirs()
+        // A local incremental build may still contain the former 43 MB S variant.
+        File(model.parentFile, "rtmdet-ins_s_640x640.onnx").delete()
         fun digest(file: File): String {
             val md = MessageDigest.getInstance("SHA-256")
             file.inputStream().use { stream ->
@@ -149,17 +132,17 @@ val downloadRtmdetAssets by tasks.registering {
         }
 
         val revision = "e5218e8d47d7c50077f27f9893a28e0ef2ad5656"
-        if (!model.isFile || model.length() != 43_236_976L ||
-            digest(model) != "9cd1787fbf3eb2bd64cc2d8154f41c036f5484b85599e1cbe0227a2dc5a4a08b"
+        if (!model.isFile || model.length() != 24_032_356L ||
+            digest(model) != "99ee670820c4493aa13e20578b6a8e39781c319846dc41796a77765734beac5c"
         ) {
             download(
-                "https://huggingface.co/tori29umai/rtmdet-ins-onnx-person-masks/resolve/" + revision + "/models/s/rtmdet-ins_s_640x640.onnx",
+                "https://huggingface.co/tori29umai/rtmdet-ins-onnx-person-masks/resolve/" + revision + "/models/tiny/rtmdet-ins_tiny_640x640.onnx",
                 model,
             )
         }
-        check(model.length() == 43_236_976L &&
-            digest(model) == "9cd1787fbf3eb2bd64cc2d8154f41c036f5484b85599e1cbe0227a2dc5a4a08b"
-        ) { "RTMDet-Ins-S asset failed size/SHA-256 verification." }
+        check(model.length() == 24_032_356L &&
+            digest(model) == "99ee670820c4493aa13e20578b6a8e39781c319846dc41796a77765734beac5c"
+        ) { "RTMDet-Ins-Tiny asset failed size/SHA-256 verification." }
 
         if (!license.isFile || license.length() == 0L) {
             download(
@@ -187,7 +170,6 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.tooling.preview)
-    implementation(libs.litert.interpreter)
     implementation(libs.onnxruntime.android)
     testImplementation(libs.junit)
 }

@@ -22,10 +22,7 @@ object ImagePrivacyProcessor {
         maskExpansionRadius: Int,
     ): ProcessedImage {
         val source = decodeBounded(context, uri)
-        val segmenter: PersonSegmentationEngine = when (FilterSettings.personModelProfile) {
-            PersonModelProfile.FAST_SEMANTIC -> LrasppPersonSegmenter(context)
-            PersonModelProfile.RTMDET_INS_S -> RtmdetPersonSegmenter(context)
-        }
+        val segmenter: PersonSegmentationEngine = RtmdetPersonSegmenter(context)
         var overlay: Bitmap? = null
         try {
             val mask = segmenter.process(source)

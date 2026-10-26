@@ -18,14 +18,14 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
- * RTMDet-Ins-S per-person masks. It does not classify gender or identify people.
+ * RTMDet-Ins-Tiny per-person masks. CPU execution is deliberate for device compatibility.
+ * It does not classify gender or identify people.
  * The model is pinned and verified before ONNX Runtime opens it.
  */
 class RtmdetPersonSegmenter(context: Context) : PersonSegmentationEngine {
     private val environment = OrtEnvironment.getEnvironment()
     private val modelFile: File
     private var session: OrtSession
-    private var usingNnapi = false
     private val inputName: String
     private val inputBitmap = Bitmap.createBitmap(INPUT_SIZE, INPUT_SIZE, Bitmap.Config.ARGB_8888)
     private val inputCanvas = Canvas(inputBitmap)
@@ -37,6 +37,10 @@ class RtmdetPersonSegmenter(context: Context) : PersonSegmentationEngine {
     private val inputFloats = inputBuffer.asFloatBuffer()
 
     init {
+        // Remove stale cached weights from the previous experimental backends before allocating a new session.
+        // This reclaims storage on upgrade while preserving SharedPreferences and user settings.
+        File(context.cacheDir, LEGACY_S_MODEL_FILE).delete()
+        File(context.cacheDir, LEGACY_LRASPP_MODEL_FILE).delete()
         modelFile = File(context.cacheDir, MODEL_FILE)
         if (!modelFile.isFile || modelFile.length() != MODEL_BYTES || sha256(modelFile) != MODEL_SHA256) {
             context.assets.open(MODEL_FILE).use { source ->
@@ -44,20 +48,14 @@ class RtmdetPersonSegmenter(context: Context) : PersonSegmentationEngine {
             }
         }
         check(modelFile.isFile && modelFile.length() == MODEL_BYTES && sha256(modelFile) == MODEL_SHA256) {
-            "RTMDet-Ins-S failed its model size or SHA-256 check."
+            "RTMDet-Ins-Tiny failed its model size or SHA-256 check."
         }
-        val accelerated = runCatching { createSession(preferNnapi = true) }
-        if (accelerated.isSuccess) {
-            session = accelerated.getOrThrow()
-            usingNnapi = true
-        } else {
-            session = createSession(preferNnapi = false)
-        }
+        session = createSession()
         inputName = session.inputNames.first()
         val inputInfo = session.inputInfo[inputName]?.info as? ai.onnxruntime.TensorInfo
-            ?: error("RTMDet input tensor metadata is missing.")
+            ?: error("RTMDet-Tiny input tensor metadata is missing.")
         require(inputInfo.shape.contentEquals(longArrayOf(1L, 3L, INPUT_SIZE.toLong(), INPUT_SIZE.toLong()))) {
-            "RTMDet input shape differs from the pinned model contract."
+            "RTMDet-Tiny input shape differs from the pinned model contract."
         }
     }
 
@@ -92,15 +90,7 @@ class RtmdetPersonSegmenter(context: Context) : PersonSegmentationEngine {
             longArrayOf(1L, 3L, INPUT_SIZE.toLong(), INPUT_SIZE.toLong()),
         )
         try {
-            return try {
-                runInference(session, tensor, source, plan)
-            } catch (nnapiError: Exception) {
-                if (!usingNnapi) throw nnapiError
-                runCatching { session.close() }
-                session = createSession(preferNnapi = false)
-                usingNnapi = false
-                runInference(session, tensor, source, plan)
-            }
+            return runInference(session, tensor, source, plan)
         } finally {
             tensor.close()
             pixelScratch.fill(0)
@@ -190,12 +180,13 @@ class RtmdetPersonSegmenter(context: Context) : PersonSegmentationEngine {
         val score: Float,
     )
 
-    private fun createSession(preferNnapi: Boolean): OrtSession {
+    private fun createSession(): OrtSession {
         val options = OrtSession.SessionOptions()
         return try {
-            options.setIntraOpNumThreads(3)
+            // The exported model contract targets ONNX Runtime CPUExecutionProvider.
+            // Avoid NNAPI partitioning/startup failures that can crash devices at model selection.
+            options.setIntraOpNumThreads(2)
             options.setInterOpNumThreads(1)
-            if (preferNnapi) options.addNnapi()
             environment.createSession(modelFile.absolutePath, options)
         } finally {
             options.close()
@@ -224,9 +215,11 @@ class RtmdetPersonSegmenter(context: Context) : PersonSegmentationEngine {
     }
 
     private companion object {
-        const val MODEL_FILE = "rtmdet-ins_s_640x640.onnx"
-        const val MODEL_SHA256 = "9cd1787fbf3eb2bd64cc2d8154f41c036f5484b85599e1cbe0227a2dc5a4a08b"
-        const val MODEL_BYTES = 43_236_976L
+        const val LEGACY_S_MODEL_FILE = "rtmdet-ins_s_640x640.onnx"
+        const val LEGACY_LRASPP_MODEL_FILE = "lraspp_mobilenet_v3_large_dynamic_wi8_afp32.tflite"
+        const val MODEL_FILE = "rtmdet-ins_tiny_640x640.onnx"
+        const val MODEL_SHA256 = "99ee670820c4493aa13e20578b6a8e39781c319846dc41796a77765734beac5c"
+        const val MODEL_BYTES = 24_032_356L
         const val INPUT_SIZE = 640
         const val PERSON_CLASS_ID = 0L
         const val SCORE_THRESHOLD = 0.30f

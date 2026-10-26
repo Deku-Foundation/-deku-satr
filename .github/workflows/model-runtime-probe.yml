@@ -1,4 +1,4 @@
-name: Temporary RTMDet Android candidate runtime probe
+name: RTMDet model memory and CPU runtime probe
 
 on:
   push:
@@ -96,6 +96,11 @@ jobs:
               elapsed_ms = (time.perf_counter() - start) * 1000
               for meta, result in zip(session.get_outputs(), results):
                   print("RESULT", meta.name, result.dtype, result.shape, "bytes=", result.nbytes)
+                  if meta.name.lower() == "masks":
+                      mib = result.nbytes / (1024 * 1024)
+                      print("MASK_OUTPUT_MEMORY_MIB:", round(mib, 2))
+                      if mib > 64:
+                          print("WARNING: mask output exceeds 64 MiB; unsuitable for low-memory real-time phone inference without graph-level output reduction.")
               print("Cold CPU smoke latency ms:", round(elapsed_ms, 2))
               print("Max RSS KiB:", resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
               session = None

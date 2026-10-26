@@ -1,6 +1,12 @@
 # Model evaluation
 
-Updated: 2026-10-25. This is a source-based shortlist, not a claim that every candidate passed a Deku Satr benchmark.
+Updated: 2026-10-26. This is a source-based shortlist, not a claim that every candidate passed a Deku Satr benchmark.
+
+## Current Android backend (v0.6.2)
+
+RTMDet-Ins-Tiny ONNX is now the only bundled model. The immutable upstream revision is `e5218e8d47d7c50077f27f9893a28e0ef2ad5656`; the model is 24,032,356 bytes and its SHA-256 is `99ee670820c4493aa13e20578b6a8e39781c319846dc41796a77765734beac5c`. The build verifies the digest and packages the model plus its Apache license/NOTICE. ONNX Runtime runs CPU-only (two intra-op threads) because the export's intended provider is CPU and NNAPI startup has not been validated across devices.
+
+The model is used for live frames and selected still images. The UI supports per-instance masking via short-lived tracks, but it does **not** automatically classify gender; the selected person is corrected manually within the active session. The smaller model reduces bundled weight size and the prior LR-ASPP model/runtime were removed. This does not establish higher recall or 99% accuracy. CI smoke tests validate the ONNX graph and tensor contract only; real-phone latency, memory, thermal behavior and screen-frame recall remain release gates.
 
 ## Task definition
 
@@ -17,9 +23,9 @@ A useful filter needs a conservative pixel mask for each person in a still image
 | `Xenova/segformer-b0-finetuned-ade-512-512` | Browser-ready ONNX model for Transformers.js; upstream card says 3.75M parameters and the ADE20K label set includes `person`. The ONNX repository listing is about 27.7 MB overall. | Temporary web baseline only. Upstream NVIDIA model card lists license `other`; do not bundle or ship the weights until the exact terms are reviewed. Actual download size depends on the selected ONNX variant and cache. |
 | MediaPipe Selfie Segmenter | Official Google guide describes 256×256 float16 models and reports about 33.46 ms CPU latency on Pixel 6 for the square model. | Speed reference; design assumes a prominent selfie subject, not guaranteed multi-person segmentation. |
 | ML Kit Selfie Segmentation 16.0.0-beta6 (Android APK) | Google documents stream mode, a confidence mask, static bundled dependency and about 4.5 MB added app size; 25–65 ms reference latency on Pixel 4 depending on input size. | **Integrated native baseline**: frames are downscaled to 640 px, only one inference runs at a time, masks are thresholded/dilated, and a two-pass CPU blur is drawn over the mask. Full-screen screenshot quality is unvalidated. |
-| TorchVision LR-ASPP + MobileNetV3-Large, LiteRT conversion | LiteRT Community lists a dynamic weight-only INT8 / FP32-activation artifact at about 3.52 MB; the file is pinned by SHA-256 in Satr. | **Integrated on dev as an experimental candidate** using LiteRT/TFLite Interpreter. Accuracy, device performance and distribution licensing remain release gates. |
-| YOLACT ResNet-50 LiteRT | Model card documents instance masks and MIT source weights; reports roughly 38–41 ms GPU graph latency on recent devices. | Keep as an accuracy/reference baseline, not the low-end default: model artifact is about 125 MB. |
-| MobileSAM2 (July 2026 research) | Research explores distilling SAM 2 into smaller image/video segmentation models for resource-limited devices. | Do not adopt until usable checkpoints, licensing, conversion, and real low-end Android results are verified. |
+| TorchVision LR-ASPP + MobileNetV3-Large, LiteRT conversion | LiteRT Community lists a dynamic weight-only INT8 / FP32-activation artifact at about 3.52 MB. | **Archived and removed from the APK in v0.6.2**; retained here as historical model research only. |
+| RTMDet-Ins-S ONNX | A larger model variant was tested as a reference; it weighs ~43.24 MB and had a 186.96 ms zero-input CPU smoke result on a hosted runner. | Superseded by RTMDet-Ins-Tiny for app distribution. Hosted CPU smoke timing is not phone performance. |
+| RTMDet-Ins-Tiny ONNX | Pinned model from the same Apache-2.0 repository; 24,032,356 bytes; SHA-256 checked at build. A hosted zero-input CPU graph smoke test succeeded and produced six 640×640 float masks (~9.38 MiB output) on that test input. | **Active v0.6.2 backend**. The smoke test is not a labeled accuracy result or a phone benchmark. |
 
 ## Sources
 
@@ -42,7 +48,7 @@ Evaluate all models on the same versioned test set and hardware:
 
 ## Technical direction
 
-The default Android profile uses LR-ASPP + MobileNetV3-Large through LiteRT/TFLite Interpreter; RTMDet-Ins-S through ONNX Runtime is an optional backend for per-person masks. The model artifact is downloaded during Gradle builds from a pinned revision and checked against SHA-256 before packaging. Live frames and still images share the same engine. This is an experimental integration and has not yet passed a labelled benchmark or real-device test.
+The Android app now uses RTMDet-Ins-Tiny through ONNX Runtime for both live frames and still images. The artifact is downloaded at build time from a pinned revision, SHA-256-checked, and included in the APK; the app does not fetch weights at runtime. The backend creates per-person masks for manual target selection. It is experimental and has not passed a labeled screen-frame benchmark or real-device test.
 
 ## Native Android research refresh (2026-10-25)
 
@@ -105,7 +111,7 @@ This release improves temporal stability and effect selection; it does **not** c
 
 ### Historical model replacement gate (superseded by 0.5.1 integration)
 
-The current model is still a portrait-oriented person segmenter and cannot infer a person's gender reliably. We have not integrated LR-ASPP/MobileNetV3 or MediaPipe's multi-class model because their end-to-end screen-capture behavior, model artifact provenance/licence, preprocessing/output contract, and low-end-device performance have not yet been validated in this repository. The MediaPipe multiclass model is substantially slower on CPU in Google's published Pixel 6 benchmark, so it is not an automatic upgrade for low-power phones. No 99% accuracy or complete-coverage claim is justified.
+The current RTMDet-Tiny model can segment individual people but has no gender output. The product goal of gender-targeted masking still requires a face detection/alignment stage and a separate gender-appearance classifier, along with an uncertain/manual-correction state. Do not infer gender from hair length, clothing, facial hair, or hairstyle; those are unreliable proxies. No 99% accuracy or complete-coverage claim is justified.
 
 The next model comparison must use the same labelled screen/video-frame set and report person recall (including small/distant/occluded subjects), boundary leakage, p50/p95 latency, sustained throughput, peak RAM, thermal behavior, battery draw, and distribution size. Gender-selective filtering is not part of this model contract; the safe default remains all-person segmentation or explicit manual regions.
 
@@ -132,20 +138,20 @@ Official references:
 
 ## Active model state (0.5.1, 2026-10-25)
 
-The dev branch has switched from ML Kit Selfie Segmentation to `litert-community/lraspp_mobilenet_v3_large_dynamic_wi8_afp32.tflite` at immutable revision `ac7d12fd05b7542cd884c85968b3193c8f8e4fa7`. Artifact size is 3,519,728 bytes; SHA-256 is `1a0a31a925f1c8e2abb76e96c4bd4bdcbc625f8389f1029530007fded4ea9ed9`. Gradle verifies this digest before packaging.
+Historical LR-ASPP experiment: v0.6.2 removes `litert-community/lraspp_mobilenet_v3_large_dynamic_wi8_afp32.tflite` and its LiteRT dependency from the app. The current packaged model is RTMDet-Ins-Tiny as specified in the Current Android backend section.
 
-Runtime: LiteRT/TFLite Interpreter 1.4.2, 3 threads with NNAPI requested, tensor layout validation, ImageNet RGB normalization, aspect-preserving letterbox, and VOC person class index 15. The shared mask is converted to a confidence map and then passed through the existing threshold/dilation/effect pipeline. Still images use the same segmenter.
+Current runtime: ONNX Runtime Android CPU, two intra-op threads and one inter-op thread. RTMDet-Tiny uses 640×640 BGR normalization and yields `dets`, `labels` and per-instance `masks`. Live frames and still images share the same instance segmenter; selected masks are composited through the existing blur/pixelate/cover renderer.
 
 Important caveats:
 - The artifact's model card does not declare an explicit license field. The integration is on the dev/evaluation branch; do not publish a release APK until model provenance and distribution rights are reviewed.
-- The artifact was validated by its publisher with the LiteRT GPU compatibility profile; Satr's own CPU/NNAPI behavior is not yet benchmarked. Inference compatibility and performance must be confirmed on physical devices.
+- Historical LR-ASPP note: the publisher's LiteRT GPU compatibility statement did not establish Satr CPU/NNAPI performance, and that backend is no longer included in the app.
 - Semantic segmentation identifies the person class but does not provide separate per-person masks or gender. Hairstyle, hair length and clothing are not gender ground truth.
 - No 99% claim is supported. CI can prove compilation and unit tests, not model recall or stable full-screen behavior.
 
 
 ## Per-person targeting decision (2026-10-25)
 
-The product requirement “men see men, women see women” cannot be met by the current LR-ASPP model: it emits one semantic person mask, not one mask per individual, and has no gender output. Hair length, facial hair, clothing, body shape, and presentation are not dependable labels for gender. A false classification would leave the wrong people visible or blur the wrong people.
+The product requirement “men see men, women see women” is not implemented by the current RTMDet-Tiny model: it supplies per-person masks, not a gender label. A separate face-classification pipeline must distinguish probable male/female appearance only when a clear face exists and expose Unknown/manual correction when it does not. Hair length, facial hair, clothing, body shape and presentation are not dependable labels for gender. A false classification would leave the wrong people visible or blur the wrong people.
 
 A current lightweight instance-segmentation candidate is YOLO26n-seg. The published EdgeFirst TFLite INT8 artifact is about 3.18 MB and the model card reports 33.25% mask mAP@[.5:.95] on COCO val2017 for the Nano FP32 reference. However, the weights remain AGPL-3.0, while the repository's code is MIT; the model card/metadata also has separate CC BY-NC 4.0 terms. It must not be bundled into this app without a deliberate licensing decision and compliance review. Published COCO metrics are not evidence of 99% recall on phone screenshots or videos.
 
@@ -170,7 +176,7 @@ Tiling may require two or more model runs per captured frame, so it can reduce t
 
 YOLO11n-seg is a stronger task fit for selecting individual people because it returns instance masks. Upstream documentation reports 32.0 mask mAP on COCO for YOLO11n-seg at 640px and 2.9M parameters; this is a published benchmark, not a Satr benchmark. The available EdgeFirst int8 TFLite artifact is about 3.23 MB but is marked AGPL-3.0. Satr's repository is MIT-licensed, so this artifact must not be bundled as if it were license-compatible without an explicit licensing decision. The STMicroelectronics conversion lists a separate SLA0044 license, so it is not an automatic substitute either.
 
-Current decision: retain the small LR-ASPP model for now, add aspect-aware tiled inference, and keep the instance-segmentation model as a gated candidate until a compatible model artifact, preprocessing/output contract, and on-device benchmark are verified. Do not infer gender from appearance; per-person selection requires instance masks and explicit user selection/tracking.
+Superseded decision (historical): LR-ASPP was removed in v0.6.2. RTMDet-Ins-Tiny is now the active per-instance backend, with explicit user selection and short-lived tracking. Gender targeting remains a separate, unvalidated milestone.
 
 Sources:
 - https://github.com/ultralytics/ultralytics/blob/main/docs/en/models/yolo11.md
@@ -186,7 +192,7 @@ The screen-resize path also respects the selected capture profile instead of sil
 
 ### Instance model candidate
 
-RTMDet-Ins-S is integrated as the optional per-person mask backend: upstream reports 38.7 mask AP on COCO val2017 at 640px, 10.18M parameters and 21.5 GFLOPs. These benchmarks are measured with TensorRT FP16 on an NVIDIA RTX 3090, not an Android phone. The integrated ONNX conversion is pinned under Apache-2.0; its Android latency, memory and thermal behavior still need measurement.
+RTMDet-Ins-S was evaluated as a larger reference variant but is no longer bundled. Its published COCO/TensorRT numbers are not Android-phone measurements. RTMDet-Ins-Tiny is the active smaller variant, pinned to a fixed revision and Apache-2.0 model files; phone latency, memory and heat still need measurement.
 
 Sources:
 - https://github.com/open-mmlab/mmdetection/blob/main/configs/rtmdet/README.md
@@ -203,7 +209,7 @@ No gender-selective mode is exposed as functional yet. The current mask is seman
 
 ## Live-path optimization (0.5.3)
 
-The LR-ASPP decoder checks the person logit against the maximum class logit before calculating a 21-class softmax. The UI minimum confidence threshold is 0.25. If the person logit is at least ln(4) below the maximum, its probability upper bound is 0.2, so it cannot pass any available threshold. Those background pixels skip the exponentials; candidate pixels retain the original softmax calculation.
+Historical LR-ASPP implementation note (not used in v0.6.2): the decoder checked the person logit against the maximum class logit before its 21-class softmax. Those optimizations only applied to the removed semantic backend.
 
 The low-latency capture profile uses a 360 px long edge, an 80 ms minimum admission interval, and one full-frame inference without tiling. It reduces model calls per captured frame but loses spatial detail on small or distant people. The configured interval is a throttle, not a promised frame rate. Inference time, rendering and device load determine actual FPS; no sub-millisecond or 99% claim is made.
 
@@ -214,14 +220,14 @@ Gender classification is not added. The current semantic mask cannot separate in
 
 ## Allocation reduction (0.5.4)
 
-The LR-ASPP preprocessor keeps one fixed-size input bitmap and canvas, draws each source frame/tile directly into the destination rectangle, and reuses the existing direct input/output buffers and pixel array. This removes the per-inference temporary scaled bitmap and input bitmap allocations while preserving the same letterbox dimensions, ImageNet normalization, channel order, and output-mask mapping. The scratch bitmap and pixel array are cleared/released when the segmenter closes.
+Historical LR-ASPP optimization note (not used in v0.6.2): that segmenter reused one input bitmap and tensor buffers. Current RTMDet-Tiny similarly reuses its input bitmap/buffers and clears the pixel scratch array after each inference.
 
 This is a code-level allocation reduction. No latency or memory percentage is claimed until measured on physical devices.
 
 
 ## Per-person model shortlist (2026-10-25, source review)
 
-The product requirement is not solved by a generic person mask. The current LR-ASPP-MobileNetV3 model emits one semantic person confidence map; it cannot label each individual separately. The next model must produce **one mask per instance**, then a user-selected target policy can decide which of those masks to composite.
+The generic semantic mask was replaced in v0.6.2: RTMDet-Ins-Tiny emits separate masks per detected person, and the session-local user policy chooses which masks to composite. The remaining unmet milestone is a well-calibrated face-appearance classifier for optional gender-targeted policy, with Unknown and manual correction.
 
 | Candidate | Model footprint | Public benchmark / behavior | License and decision |
 |---|---:|---|---|
