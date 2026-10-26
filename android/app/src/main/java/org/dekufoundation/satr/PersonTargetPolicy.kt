@@ -3,8 +3,9 @@ package org.dekufoundation.satr
 /**
  * User-controlled privacy policy over per-instance masks.
  *
- * This layer intentionally does not assign a gender or identity to a detected person.
- * The UI/model adapter must let the user select the track to blur or keep.
+ * Optional face-presentation estimates are consumed as model labels, not identity determinations.
+ * Missing/low-confidence faces are treated as UNKNOWN and stay blurred in targeted modes.
+ * The UI/model adapter also supports explicit per-track correction for the current session.
  */
 enum class PersonTargetMode {
     /** Conservative default: blur every detected person. */
