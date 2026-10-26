@@ -2,11 +2,11 @@
 
 Updated: 2026-10-26. This is a source-based shortlist, not a claim that every candidate passed a Deku Satr benchmark.
 
-## Current Android backend (v0.6.2)
+## Current Android backend (v0.6.3 preview)
 
 RTMDet-Ins-Tiny ONNX is now the only bundled model. The immutable upstream revision is `e5218e8d47d7c50077f27f9893a28e0ef2ad5656`; the model is 24,032,356 bytes and its SHA-256 is `99ee670820c4493aa13e20578b6a8e39781c319846dc41796a77765734beac5c`. The build verifies the digest and packages the model plus its Apache license/NOTICE. ONNX Runtime runs CPU-only (two intra-op threads) because the export's intended provider is CPU and NNAPI startup has not been validated across devices.
 
-The model is used for live frames and selected still images. The UI supports per-instance masking via short-lived tracks, but it does **not** automatically classify gender; the selected person is corrected manually within the active session. The smaller model reduces bundled weight size and the prior LR-ASPP model/runtime were removed. This does not establish higher recall or 99% accuracy. CI smoke tests validate the ONNX graph and tensor contract only; real-phone latency, memory, thermal behavior and screen-frame recall remain release gates.
+The person model is used for live frames and still images. A draft, opt-in face-presentation path additionally uses YuNet + FastFace-Large-128; it is loaded only when a user selects a gender-targeted policy. It estimates a model's female-/male-presenting class from an aligned face crop, not gender identity. Two high-confidence observations (each >=0.88) are required in live mode; missing/uncertain faces immediately become Unknown and remain blurred. User corrections apply to the current session/image workflow, do not upload or retain face crops, and do not retrain weights. These safeguards do not establish higher accuracy or 99% recall. CI smoke tests validate graph contracts only; actual screen-domain accuracy, device latency, memory, heat and battery remain release gates.
 
 ## Task definition
 
@@ -26,6 +26,22 @@ A useful filter needs a conservative pixel mask for each person in a still image
 | TorchVision LR-ASPP + MobileNetV3-Large, LiteRT conversion | LiteRT Community lists a dynamic weight-only INT8 / FP32-activation artifact at about 3.52 MB. | **Archived and removed from the APK in v0.6.2**; retained here as historical model research only. |
 | RTMDet-Ins-S ONNX | A larger model variant was tested as a reference; it weighs ~43.24 MB and had a 186.96 ms zero-input CPU smoke result on a hosted runner. | Superseded by RTMDet-Ins-Tiny for app distribution. Hosted CPU smoke timing is not phone performance. |
 | RTMDet-Ins-Tiny ONNX | Pinned model from the same Apache-2.0 repository; 24,032,356 bytes; SHA-256 checked at build. A hosted zero-input CPU graph smoke test succeeded and produced six 640×640 float masks (~9.38 MiB output) on that test input. | **Active v0.6.2 backend**. The smoke test is not a labeled accuracy result or a phone benchmark. |
+
+## Face-presentation candidate (v0.6.3 preview)
+
+The optional targeting path consists of two pinned CPU ONNX models:
+- YuNet face detector: 232,589 bytes; SHA-256 `8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4`; MIT.
+- FastFace-Large-128 face-presentation model: 4,008,918 bytes; SHA-256 `2834e70884800019972e588fbe95eb73ebe942120a364d8aaa60085ba4f5b9cf`; Apache-2.0.
+
+Both artifacts are pinned to immutable revisions, verified during the Gradle build, and their license texts are packaged. These extra models are loaded only when the user explicitly selects a gender-targeted mask policy or still-image target mode; opening the app, normal blur mode, and ordinary settings do not load them. No face crop is written to disk or uploaded.
+
+FastFace's upstream model card reports strong balanced-accuracy figures on its own public face datasets (including about 95.6% on one comparison set). These values are not phone-screen accuracy, not a per-demographic error guarantee, and not evidence of 99% recall. YuNet can miss small or occluded faces, and FastFace can mislabel faces outside its training domain. An unmatched or uncertain face is Unknown, and Unknown people remain blurred in gender-targeted modes.
+
+The label names in code are `MALE_PRESENTING` and `FEMALE_PRESENTING` to make clear that this is a visual model output, not a determination of gender identity. It deliberately does not use hair length, clothes, facial hair or body shape as a gender proxy. Live predictions need two consecutive high-confidence scans; manual corrections change the target policy for the current session and do not train the network. Still-image processing uses the same face models only for a gender-target selection; if the person masks are missing, it covers the whole image rather than assume privacy.
+
+Source repositories:
+- FastFace model and license: https://huggingface.co/iFurySt/fastface
+- YuNet model and license: https://github.com/opencv/opencv_zoo/tree/48b10fa505aeb51fbd127fc60a5c660040e823b7/models/face_detection_yunet
 
 ## Sources
 
@@ -111,7 +127,7 @@ This release improves temporal stability and effect selection; it does **not** c
 
 ### Historical model replacement gate (superseded by 0.5.1 integration)
 
-The current RTMDet-Tiny model can segment individual people but has no gender output. The product goal of gender-targeted masking still requires a face detection/alignment stage and a separate gender-appearance classifier, along with an uncertain/manual-correction state. Do not infer gender from hair length, clothing, facial hair, or hairstyle; those are unreliable proxies. No 99% accuracy or complete-coverage claim is justified.
+Historical note from v0.6.2: RTMDet-Tiny did not include gender-targeting itself. In the v0.6.3 preview, a separate face detector/alignment stage and FastFace presentation classifier were added behind an explicit policy. The feature is still unvalidated on phone-screen data; hair/clothing heuristics remain prohibited and Unknown is kept blurred. No 99% accuracy or complete-coverage claim is justified.
 
 The next model comparison must use the same labelled screen/video-frame set and report person recall (including small/distant/occluded subjects), boundary leakage, p50/p95 latency, sustained throughput, peak RAM, thermal behavior, battery draw, and distribution size. Gender-selective filtering is not part of this model contract; the safe default remains all-person segmentation or explicit manual regions.
 
@@ -151,7 +167,7 @@ Important caveats:
 
 ## Per-person targeting decision (2026-10-25)
 
-The product requirement “men see men, women see women” is not implemented by the current RTMDet-Tiny model: it supplies per-person masks, not a gender label. A separate face-classification pipeline must distinguish probable male/female appearance only when a clear face exists and expose Unknown/manual correction when it does not. Hair length, facial hair, clothing, body shape and presentation are not dependable labels for gender. A false classification would leave the wrong people visible or blur the wrong people.
+The product requirement “men see men, women see women” is implemented only as an experimental visual face-presentation target policy, not as an identity/gender determination. A clear face is required; the output is smoothed over repeated frames, and Unknown is manually correctable and remains masked. Hair length, facial hair, clothing, body shape and presentation are not dependable identity labels. A false classification may blur the wrong person; on-screen recall and demographic error rates must be measured.
 
 A current lightweight instance-segmentation candidate is YOLO26n-seg. The published EdgeFirst TFLite INT8 artifact is about 3.18 MB and the model card reports 33.25% mask mAP@[.5:.95] on COCO val2017 for the Nano FP32 reference. However, the weights remain AGPL-3.0, while the repository's code is MIT; the model card/metadata also has separate CC BY-NC 4.0 terms. It must not be bundled into this app without a deliberate licensing decision and compliance review. Published COCO metrics are not evidence of 99% recall on phone screenshots or videos.
 
@@ -159,7 +175,7 @@ Sources:
 - https://huggingface.co/EdgeFirst/yolo26-seg
 - https://huggingface.co/EdgeFirst/yolo26-seg/tree/main/tflite
 
-Until a compatible instance-segmentation model is selected and validated, the shipped behavior stays “mask all detected people.” The correct next design for selective targeting is instance masks plus explicit user selection or user-defined labels, with temporal tracking between frames. Do not automatically infer gender from appearance. The model must be benchmarked on screen captures including distant people, long-haired men, short-haired women, occlusion, motion, and varied display scaling before enabling selective policies.
+Historical note from v0.6.2: the default was mask-all, with manual per-person selection. v0.6.3 adds an optional face-presentation experiment, but the default remains mask-all. Evaluate screen frames including distant people, long-haired men, short-haired women, multiple people, occlusion, motion, varied skin tones, and display scaling before considering it release-ready.
 
 
 ## Aspect-aware multi-crop inference (2026-10-25)
@@ -265,3 +281,12 @@ The user can choose “blur all”, “blur selected only”, or “blur all exc
 RTMDet-Ins-tiny remains a smaller future option (~24 MB; COCO mask mAP 35.4) if device testing shows the S variant is too heavy. The S variant is currently selected for its stronger published COCO mask mAP (38.7). Published metrics use COCO and must not be interpreted as recall on phone screenshots. No 99% accuracy claim is made.
 
 Source: https://huggingface.co/tori29umai/rtmdet-ins-onnx-person-masks
+
+
+## Version 0.6.3 validation gate
+
+- Compare per-person recall and face detection recall on labeled real phone screenshots and videos, stratified by face size, occlusion, lighting, display scaling and demographics.
+- Report false visible-person rate in each target mode, unknown rate, incorrect presentation label rate, and error rate per subgroup; unknown and low-confidence detections must stay masked.
+- Measure p50/p95 end-to-end latency, RAM peak, sustained thermal behavior and battery on low-, mid- and high-tier Android devices. The extra face classifier is a separate on-demand path, not a promise of fixed FPS.
+- Include still-image tests showing that a missing person mask in gender-target mode falls back to full-image coverage, and that original files remain unchanged.
+- No public release or 99% claim until a representative held-out evaluation and legal/privacy review is complete.
