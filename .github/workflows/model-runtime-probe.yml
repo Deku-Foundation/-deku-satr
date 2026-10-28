@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Read pinned model card and preprocessing contract
